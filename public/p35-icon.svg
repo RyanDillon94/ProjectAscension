@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="112" fill="#0f172a"/>
-  <!-- Changed stroke border to electric neon green -->
-  <rect x="24" y="24" width="464" height="464" rx="96" fill="#18232c" stroke="#00ff66" stroke-width="12"/>
-  <text x="50%" y="42%" text-anchor="middle" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800" font-size="64" letter-spacing="4">PROJECT</text>
-  <!-- Changed text fill to electric neon green -->
-  <text x="50%" y="78%" text-anchor="middle" fill="#00ff66" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="160" letter-spacing="-4">35</text>
-</svg>
