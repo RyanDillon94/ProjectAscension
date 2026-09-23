@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PHASES, getAscensionProfile } from "@/lib/project35";
 import { getDeloadOffset } from "@/utils/dateUtils";
 import { Calendar, Map } from "lucide-react";
+import { RecalibrateModal } from "@/components/p35/recalibrate-modal";
 
 function getShiftedBlockDates(blockStart: string, blockEnd: string, offsetDays: number) {
   const [sy, sm, sd] = blockStart.split("-").map(Number);
@@ -159,15 +160,18 @@ export function Roadmap() {
         ))}
       </Accordion>
       
-      {profile?.motto && (
-        <>
-          <br />
-          <div className="flex flex-col items-center">
-            <p className="text-center text-sm italic tracking-wide text-primary/90 font-medium">
-              &ldquo;{profile.motto}&rdquo;
-            </p>
-          </div>
-        </>
+      {/* RECALIBRATE BUTTON */}
+      <div className="pt-4 pb-2 flex justify-center border-t border-border/40 mt-6">
+        <RecalibrateModal />
+      </div>
+
+      {/* FOOTER QUOTE */}
+      {profile.footerQuote && (
+        <div className="pt-4 text-center space-y-1.5">
+          <p className="text-sm font-bold text-primary italic">
+            "{profile.footerQuote}"
+          </p>
+        </div>
       )}
     </section>
   );
