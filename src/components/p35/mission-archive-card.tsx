@@ -228,7 +228,7 @@ export function MissionArchiveCard() {
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger asChild>
+      <SheetTrigger asChild>
         <div className="panel flex items-center justify-between p-4 cursor-pointer hover:border-primary/50 transition-colors w-full gap-2">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Archive className="size-5 shrink-0 text-primary" />
@@ -243,7 +243,7 @@ export function MissionArchiveCard() {
           </div>
 
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
             className="pointer-events-none gap-1.5 h-8 text-xs shrink-0 min-w-[84px] justify-center"
           >
@@ -295,7 +295,7 @@ export function MissionArchiveCard() {
               const phaseTitle =
                 archive.phaseTitle ||
                 block.phaseTitle ||
-                "Project 35";
+                "Project Ascension";
 
               const blockName =
                 archive.blockName ||
