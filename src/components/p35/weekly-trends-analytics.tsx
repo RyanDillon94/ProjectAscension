@@ -93,13 +93,18 @@ export function WeeklyTrendsAnalytics() {
           } catch {}
         }
 
-        dayHabits.forEach((h) => {
+        dayHabits.forEach((h: any) => {
           const labelLower = h.label.toLowerCase();
-          const isWeekdayOnly = 
+          
+          // Legacy regex to protect existing historical data without breaking custom habits
+          const isLegacyWeekday = 
             h.key === "workout_complete" || 
             h.key === "early_morning" || 
             labelLower.includes("workout") || 
-            labelLower.includes("6:00 am");
+            /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower);
+            
+          // Look for explicit property first, fall back to string matching
+          const isWeekdayOnly = h.isWeekdayOnly !== undefined ? h.isWeekdayOnly : isLegacyWeekday;
 
           if (isWeekend && isWeekdayOnly) return;
 
