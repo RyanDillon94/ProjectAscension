@@ -23,7 +23,7 @@ export function DashboardHeader() {
         <div className="min-w-0">
           <p className="stat-label">Character sheet</p>
           <h1 className="text-2xl leading-tight font-bold">
-            Project Ascension: <br><span className="text-primary">Same Man, Higher Standards</span>
+            Project Ascension: <br></br><span className="text-primary">Same Man, Higher Standards</span>
           </h1>
         </div>
       </div>
