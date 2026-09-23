@@ -189,7 +189,7 @@ CRITICAL RULES:
           Recalibrate Plan
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg h-[85vh] flex flex-col">
+      <DialogContent className="max-w-lg w-[95vw] h-[85dvh] max-h-[85dvh] flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-primary">
             <Settings2 className="size-5" />
@@ -197,7 +197,7 @@ CRITICAL RULES:
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 py-4 pr-2" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4 pr-2" ref={scrollRef}>
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[90%] rounded-xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-surface-2/60 text-foreground"}`}>
