@@ -23,14 +23,12 @@ export function DashboardHeader() {
         <div className="min-w-0">
           <p className="stat-label">Character sheet</p>
           <h1 className="text-2xl leading-tight font-bold">
-            Project Ascension: <span className="text-primary">Same Man, Higher Standards</span>
+            Project Ascension: <br><span className="text-primary">Same Man, Higher Standards</span>
           </h1>
         </div>
       </div>
 
-      <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">
-        Forging unbreakable mental grit and a vascula,combat-ready physique.
-      </p>
+      <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">Forging unbreakable mental grit and a vascular,combat-ready physique.</p>
 
       {/* Clean Phase Badge: Phase 1 • Block 1: The Clock */}
       <div className="flex flex-wrap items-center gap-2">
