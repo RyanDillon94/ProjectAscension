@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DAILY_TARGETS, getActiveHabits, todayKey } from "@/lib/project35";
+import { DAILY_TARGETS, getActiveHabits, todayKey, getAscensionProfile } from "@/lib/project35";
 import { useHabitDay } from "@/lib/p35-cloud";
 import { Beef, BookOpen, ChevronLeft, ChevronRight, Dumbbell, Footprints, Sunrise, Utensils } from "lucide-react";
 import { toast } from "sonner";
@@ -128,15 +128,18 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         } catch {}
       }
 
-      dayHabits.forEach((h) => {
+      dayHabits.forEach((h: any) => {
         const labelLower = h.label.toLowerCase();
         
-        // Safely identify weekday-only habits regardless of specific AI-generated times/labels
-        const isWeekdayOnly = 
+        // Legacy regex to protect your existing historical data
+        const isLegacyWeekday = 
           h.key === "workout_complete" || 
           h.key === "early_morning" || 
           labelLower.includes("workout") || 
-          /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower); // Catches any time format like "6:00 am" or "7:00 AM"
+          /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower);
+
+        // Look for explicit property first, fall back to string matching
+        const isWeekdayOnly = h.isWeekdayOnly !== undefined ? h.isWeekdayOnly : isLegacyWeekday;
 
         if (isWeekend && isWeekdayOnly) {
           return;
@@ -165,15 +168,19 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
   const done = activeHabits.filter((h) => habits[h.key]).length;
 
+  // Dynamically fetch targets to prevent hardcoding your specific metrics
+  const profile = getAscensionProfile();
+  const liveTargets = profile?.targets || DAILY_TARGETS;
+
   const targetStats = [
     {
       icon: Utensils,
       label: "Calories",
-      value: `${DAILY_TARGETS.caloriesMin.toLocaleString()}–${DAILY_TARGETS.caloriesMax.toLocaleString()} kcal`,
+      value: `${(liveTargets.caloriesMin ?? DAILY_TARGETS.caloriesMin).toLocaleString()}–${(liveTargets.caloriesMax ?? DAILY_TARGETS.caloriesMax).toLocaleString()} kcal`,
     },
-    { icon: Beef, label: "Protein", value: `${DAILY_TARGETS.protein}g+` },
-    { icon: Footprints, label: "Steps", value: DAILY_TARGETS.steps.toLocaleString() },
-    { icon: Sunrise, label: "Routine", value: DAILY_TARGETS.routine },
+    { icon: Beef, label: "Protein", value: `${liveTargets.protein ?? DAILY_TARGETS.protein}g+` },
+    { icon: Footprints, label: "Steps", value: (liveTargets.steps ?? DAILY_TARGETS.steps).toLocaleString() },
+    { icon: Sunrise, label: "Routine", value: liveTargets.routine ?? DAILY_TARGETS.routine },
   ];
 
   return (
