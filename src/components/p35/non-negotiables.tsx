@@ -130,11 +130,13 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
       dayHabits.forEach((h) => {
         const labelLower = h.label.toLowerCase();
+        
+        // Safely identify weekday-only habits regardless of specific AI-generated times/labels
         const isWeekdayOnly = 
           h.key === "workout_complete" || 
           h.key === "early_morning" || 
           labelLower.includes("workout") || 
-          labelLower.includes("6:00 am");
+          /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower); // Catches any time format like "6:00 am" or "7:00 AM"
 
         if (isWeekend && isWeekdayOnly) {
           return;
