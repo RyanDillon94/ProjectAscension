@@ -501,7 +501,7 @@ export function NonNegotiables({
   // ============================================================
 
   return (
-    <section className="panel p-5 space-y-4">
+    <section className="panel p-5 space-y-4 w-full overflow-hidden">
 
       {/* ======================================================
           HEADER
@@ -509,7 +509,7 @@ export function NonNegotiables({
 
       <div className="flex items-center justify-between gap-2">
 
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
 
           <Dumbbell className="size-5 shrink-0 text-primary" />
 
@@ -547,7 +547,7 @@ export function NonNegotiables({
 
             <s.icon className="size-4 shrink-0 text-primary" />
 
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
 
               <p className="stat-label">
                 {s.label}
@@ -581,7 +581,7 @@ export function NonNegotiables({
           <ChevronLeft className="size-4" />
         </button>
 
-        <span className="text-xs font-semibold tracking-wide text-foreground">
+        <span className="text-xs font-semibold tracking-wide text-foreground truncate px-2">
           {dateHeading} ({selectedDay})
         </span>
 
@@ -632,7 +632,7 @@ export function NonNegotiables({
                 }`}
               >
 
-                <div className="min-w-0 pr-3">
+                <div className="min-w-0 flex-1 pr-3">
 
                   <span
                     className={`block text-sm font-medium leading-snug ${
@@ -681,7 +681,7 @@ export function NonNegotiables({
 
           <BookOpen className="size-3.5 text-primary" />
 
-          <span>
+          <span className="truncate">
             Daily Journal / Log ({selectedDay})
           </span>
 
