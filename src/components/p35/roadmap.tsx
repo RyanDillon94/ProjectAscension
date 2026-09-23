@@ -62,8 +62,15 @@ export function Roadmap() {
   }
 
   const totalPhases = safePhases.length;
-  const blocksPerPhase = safePhases[0]?.blocks?.length || 0;
-  
+
+const blocksPerPhase = Math.max(
+  0,
+  ...safePhases.map(
+    (phase: any) =>
+      phase.blocks?.length || 0,
+  ),
+);
+
   const lastPhase = safePhases[totalPhases - 1];
   const lastBlock = lastPhase?.blocks?.[lastPhase.blocks.length - 1];
   
