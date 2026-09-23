@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
-  getActiveBlockDetails, 
+  getActiveBlockDetails,
+  getActiveBlockCountdown,
   getActiveHabits, 
   todayKey, 
   DAILY_TARGETS, 
@@ -16,7 +17,7 @@ import { getMondayKeyForDate } from "./WeeklyProtocolCard";
 function getCoachSystemPrompt() {
   const { activePhase, activeBlock } = getActiveBlockDetails();
 
-  return `You are the Project 35 performance coach: direct, no-fluff, and technically sharp.
+  return `You are the Project Ascension performance coach: direct, no-fluff, and technically sharp.
 Rules:
 - Celebrate only earned wins, briefly. No hype, no filler, no emoji.
 - Athlete Phase Context: Phase ${activePhase.id} (${activePhase.title}) — ${activeBlock.name}. Focus: ${activeBlock.focus.join(", ")}. Phase Summary: ${activePhase.summary}
@@ -129,12 +130,9 @@ export function FinaliseWeekBanner({ userId }: { userId: string | null }) {
         })) 
       : [];
 
-    const startDate = new Date("2026-09-07T00:00:00Z");
-    const diffTime = Math.abs(evaluationDateObj.getTime() - startDate.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const currentWeekNumber = Math.max(1, Math.ceil(diffDays / 7));
-    
-    const isPhotoWeek = evaluationDateObj.getUTCDay() === 0 && currentWeekNumber % 4 === 0;
+    // REMOVED HARDCODED DATE - Dynamically fetch week from engine
+    const { currentWeek } = getActiveBlockCountdown();
+    const isPhotoWeek = evaluationDateObj.getUTCDay() === 0 && currentWeek % 4 === 0;
 
     const habitStats: Record<string, { label: string; completed: number; total: number; expectedTotal: number }> = {};
     let totalPossibleChecks = 0;
@@ -320,7 +318,7 @@ export function FinaliseWeekBanner({ userId }: { userId: string | null }) {
 
       const contextBundle = `Weekly Adherence: ${summaryData.overallPercentage}% (${summaryData.totalCompleted}/${summaryData.totalPossible} total checks).\nHabit Breakdown:\n${breakdownText}\n\nRecent Bodyweight Log:\n${weightText}\n\nWeekly Execution Protocol Targets:\n${protocolText}\n\nLifting Sessions (Hevy):\n${hevyText}\n\nDaily Journal Notes:\n${journalText}`;
       
-            const userPrompt = `Review my completed week based on the performance data, bodyweight trend, protocol targets, journal notes, and workout logs.
+      const userPrompt = `Review my completed week based on the performance data, bodyweight trend, protocol targets, journal notes, and workout logs.
 
 You MUST structure your response EXACTLY with these four markdown headers and nothing else:
 
@@ -461,139 +459,88 @@ Do NOT output any empty bullet points. Do NOT alter the headers.`;
           }
         }}>
           <DialogTrigger asChild>
-            <Button size="sm" variant={summaryData.isOverdue ? "default" : summaryData.isFinalised ? "outline" : "default"} className={`gap-1.5 shrink-0 ${summaryData.isOverdue ? "bg-amber-500 text-black hover:bg-amber-400" : ""}`}>
-              <Sparkles className="size-4" />
-              {summaryData.isOverdue ? "Finalise" : summaryData.isFinalised ? "Refinalise" : "Finalise"}
+            <Button 
+              size="sm" 
+              variant={summaryData.isOverdue ? "default" : summaryData.isFinalised ? "outline" : "default"} 
+              className={`gap-1.5 shrink-0 ${summaryData.isOverdue ? "bg-amber-500 text-black hover:bg-amber-600" : ""}`}
+            >
+              {summaryData.isOverdue ? "Finalise Now" : summaryData.isFinalised ? "Review" : "Finalise"}
             </Button>
           </DialogTrigger>
+          
           <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Trophy className="size-5 text-primary" />
-                Weekly Performance Summary
+                Week in Review
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 pt-2">
-              {summaryData.isPhotoWeek && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 flex items-start gap-3">
-                  <Camera className="size-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="text-xs space-y-1">
-                    <p className="font-semibold text-amber-500">4-Week Photo Checkpoint Due</p>
-                    <p className="text-muted-foreground">This is your 4-week rotation Sunday. Upload your checkpoint photos below to clear this requirement.</p>
+            <div className="space-y-5 pt-2">
+              {!summaryData.hasRequiredWeighIn && (
+                <div className="rounded-lg border border-rose-500/50 bg-rose-500/10 p-3 flex items-start gap-2.5 text-rose-400">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <div className="text-xs">
+                    <p className="font-bold">Missing Weigh-in</p>
+                    <p className="mt-0.5 text-rose-300">You must log a bodyweight entry for {summaryData.evaluationDateStr} before locking in the week.</p>
                   </div>
                 </div>
               )}
 
-              <div className="rounded-lg border border-border bg-surface-2/60 p-4 text-center space-y-1">
-                <p className="stat-label">You were on form for</p>
-                <p className="font-display text-3xl font-bold text-primary">{summaryData.overallPercentage}%</p>
-                <p className="text-xs text-muted-foreground">of the week ({summaryData.totalCompleted}/{summaryData.totalPossible} total checks)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-border bg-surface-2/60 p-3 text-center">
+                  <p className="stat-label">Adherence</p>
+                  <p className="font-display text-2xl font-bold text-primary">{summaryData.overallPercentage}%</p>
+                </div>
+                <div className="rounded-lg border border-border bg-surface-2/60 p-3 text-center">
+                  <p className="stat-label">Check-ins</p>
+                  <p className="font-display text-2xl font-bold text-primary">{summaryData.totalCompleted}/{summaryData.totalPossible}</p>
+                </div>
               </div>
+
+              {summaryData.isPhotoWeek && (
+                <div className="flex items-center gap-2 text-xs font-bold text-primary bg-primary/10 border border-primary/20 rounded-lg p-3">
+                  <Camera className="size-4" />
+                  End of Block: Mandatory Physique Update Required
+                </div>
+              )}
 
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Non-Negotiables Breakdown</p>
-                <div className="space-y-1.5 rounded-lg border border-border bg-surface-2/40 p-3">
-                  {summaryData.habitBreakdown.map((h, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-border/40 last:border-0">
-                      <span className="text-foreground font-medium">{h.label}</span>
-                      <span className="font-semibold text-primary">{h.completed}/{h.total}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {summaryData.weeklyProtocolGoals.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Weekly Execution Protocol</p>
-                    <span className="text-[10px] text-muted-foreground italic">Check dashboard to amend</span>
-                  </div>
-                  <div className="space-y-2 rounded-lg border border-border bg-surface-2/40 p-3">
-                    {summaryData.weeklyProtocolGoals.map((g) => {
-                      const currentStatus = g.status || (g.completed ? "completed" : "pending");
-                      const current = g.completedCount || 0;
-                      const total = g.targetCount || 0;
-                      
-                      return (
-                        <div key={g.id} className="flex flex-col gap-1 py-2 border-b border-border/40 last:border-0">
-                          <span className={`text-xs font-medium ${currentStatus === "completed" ? "text-emerald-400" : currentStatus === "failed" ? "text-rose-400 line-through opacity-80" : "text-foreground"}`}>
-                            {g.text}
-                          </span>
-                          {g.notes && (
-                            <span className={`text-[11px] italic pl-2 border-l-2 ${currentStatus === "failed" ? "border-rose-500/30 text-rose-300/80" : "border-primary/30 text-muted-foreground/80"}`}>
-                              {currentStatus === "failed" ? `Reason: ${g.notes}` : `Notes: ${g.notes}`}
-                            </span>
-                          )}
-                          <div className="flex items-center justify-between gap-2 mt-1">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              currentStatus === "completed" 
-                                ? "bg-emerald-500/25 text-emerald-300" 
-                                : currentStatus === "failed"
-                                ? "bg-rose-500/25 text-rose-300"
-                                : "bg-amber-500/25 text-amber-300"
-                            }`}>
-                              {currentStatus === "completed" ? "Smashed" : currentStatus === "failed" ? "Failed" : total > 0 ? `${current}/${total}` : "Pending"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Pulled AI Header Outside the Content Box */}
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    <Sparkles className="size-4" />
-                    AI Weekly Journal Synthesis
-                  </p>
-                  
-                  {summaryData.aiSummary !== "Tap below to generate your AI weekly journal synthesis and performance verdict." && (
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="h-7 text-xs text-muted-foreground hover:text-primary gap-1"
-                      onClick={generateAiSummary}
-                      disabled={loadingAi}
-                    >
-                      {loadingAi ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
-                      Regenerate
-                    </Button>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-border bg-surface-2/60 p-4 min-h-[100px]">
-                  {summaryData.aiSummary === "Tap below to generate your AI weekly journal synthesis and performance verdict." ? (
-                    <Button
-                      variant="secondary"
-                      className="w-full gap-2 text-primary"
-                      onClick={generateAiSummary}
-                      disabled={loadingAi}
-                    >
-                      {loadingAi ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                      {loadingAi ? "Analyzing week..." : "Generate AI Verdict"}
-                    </Button>
-                  ) : (
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Coach Synthesis</h4>
+                {summaryData.aiSummary.includes("Tap below to generate") ? (
+                  <Button 
+                    variant="outline" 
+                    className="w-full gap-2 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary" 
+                    onClick={generateAiSummary}
+                    disabled={loadingAi}
+                  >
+                    {loadingAi ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    {loadingAi ? "Analyzing Week..." : "Generate Performance Verdict"}
+                  </Button>
+                ) : (
+                  <div className="rounded-lg border border-primary/30 bg-surface-2/40 p-4">
                     <FormattedSynthesis text={summaryData.aiSummary} />
-                  )}
-                </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-3 w-full gap-2 text-xs" 
+                      onClick={generateAiSummary}
+                      disabled={loadingAi}
+                    >
+                      {loadingAi ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                      Regenerate Synthesis
+                    </Button>
+                  </div>
+                )}
               </div>
-
-              {!summaryData.hasRequiredWeighIn && !summaryData.isMonday && (
-                <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-400">
-                  ⚠️ You must log today's bodyweight on the dashboard before locking in the week.
-                </div>
-              )}
-
+              
               <Button 
-                className="w-full font-bold mt-4" 
+                className="w-full font-bold" 
+                size="lg" 
                 onClick={handleLockInWeek}
-                disabled={!summaryData.hasRequiredWeighIn}
+                disabled={!summaryData.hasRequiredWeighIn || loadingAi || summaryData.aiSummary.includes("Tap below to generate")}
               >
-                {summaryData.isFinalised ? "Refinalise & Update Archive" : "Lock In Week & Archive"}
+                {summaryData.isFinalised ? "Update Locked Week" : "Lock In Week"}
               </Button>
             </div>
           </DialogContent>
