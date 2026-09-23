@@ -392,7 +392,7 @@ async function callGemini(
 // COMPONENT
 // ============================================================
 
-export default function CoachDrawer({
+export function CoachDrawer({
   workout,
   entries = [],
   userId,
