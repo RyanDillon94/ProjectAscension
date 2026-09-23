@@ -387,7 +387,7 @@ export function WeeklyProtocolCard({ currentDate }: { currentDate?: string }) {
             <textarea
               ref={inputRef}
               rows={1}
-              placeholder="Add weekly target (e.g. Add treadmill finishers to 2 workouts)..."
+              placeholder="Add weekly target (e.g. Complete 15 mins of mobility after 2 workouts)..."
               value={newGoalText}
               onChange={(e) => setNewGoalText(e.target.value)}
               onKeyDown={(e) => {
