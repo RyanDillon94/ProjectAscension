@@ -209,7 +209,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
             if (reply) {
               success = true;
-              break; // Stop falling back once a model succeeds
+              break; 
             }
           }
 
@@ -224,7 +224,6 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         throw new Error(`All model endpoints failed: ${lastErrorMsg}`);
       }
 
-      // Safe string creation to prevent markdown parser copy-paste breaks
       const codeMarker = '`' + '`' + '`';
       
       if (reply.includes(`${codeMarker}json`) && reply.includes(codeMarker)) {
@@ -232,7 +231,6 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         try {
           const profile = JSON.parse(jsonString);
           
-          // Clear residual history to ensure a clean slate, then safely restore keys
           const currentApiKey = localStorage.getItem("p35_gemini_api_key");
           const currentHevyKey = localStorage.getItem("p35_hevy_api_key");
           localStorage.clear();
