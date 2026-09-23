@@ -189,15 +189,15 @@ CRITICAL RULES:
           Recalibrate Plan
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg w-[95vw] h-[85dvh] max-h-[85dvh] flex flex-col">
-        <DialogHeader className="shrink-0">
+      <DialogContent className="max-w-lg w-[95vw] h-[85dvh] max-h-[85dvh] flex flex-col overflow-hidden p-4 sm:p-6">
+        <DialogHeader className="shrink-0 pb-2">
           <DialogTitle className="flex items-center gap-2 text-primary">
             <Settings2 className="size-5" />
             AI Protocol Recalibration
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4 pr-2" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-2 pr-1" ref={scrollRef}>
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[90%] rounded-xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-surface-2/60 text-foreground"}`}>
@@ -218,7 +218,7 @@ CRITICAL RULES:
           )}
         </div>
 
-        <div className="pt-2 shrink-0">
+        <div className="pt-3 shrink-0 border-t border-border/40 bg-background">
           <div className="relative">
             <input
               type="text"
