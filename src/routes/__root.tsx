@@ -81,8 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "Project Ascension:
-Same Man, Higher Standards"  },
+      { title: "Project Ascension: Same Man, Higher Standards"  },
       {
         name: "description",
         content: "Dark fitness command centre for the road to November 2029.",
