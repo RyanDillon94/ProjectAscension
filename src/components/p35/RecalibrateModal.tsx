@@ -17,42 +17,61 @@ function FormattedMessage({ text }: { text: string }) {
     .replace(/\s+\*\s+(\*\*)/g, "\n\n• $1")
     .replace(/\s+-\s+(\*\*)/g, "\n\n• $1");
 
-  const lines = cleanedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lines = cleanedText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   return (
     <div className="space-y-2 text-sm leading-relaxed">
       {lines.map((line, idx) => {
-        const subItems = line.split(/(?=\*\*\d+\.)|\s+\*\s+(?=\*\*)/).map(s => s.trim()).filter(Boolean);
+        const subItems = line
+          .split(/(?=\*\*\d+\.)|\s+\*\s+(?=\*\*)/)
+          .map((s) => s.trim())
+          .filter(Boolean);
 
         return (
           <div key={idx} className="space-y-1.5">
             {subItems.map((sub, sIdx) => {
               const isNumberedHeader = /^\*\*\d+\./.test(sub);
-              const isBullet = sub.startsWith("* ") || sub.startsWith("- ") || sub.startsWith("• ");
+              const isBullet =
+                sub.startsWith("* ") ||
+                sub.startsWith("- ") ||
+                sub.startsWith("• ");
+
               const cleanSub = sub.replace(/^[*•–-\s]+/, "");
 
               return (
-                <p 
-                  key={sIdx} 
+                <p
+                  key={sIdx}
                   className={
-                    isNumberedHeader 
-                      ? "font-bold text-foreground mt-3 mb-1" 
-                      : isBullet 
-                        ? "pl-3 flex items-start gap-2 font-medium" 
+                    isNumberedHeader
+                      ? "font-bold text-foreground mt-3 mb-1"
+                      : isBullet
+                        ? "pl-3 flex items-start gap-2 font-medium"
                         : "font-normal"
                   }
                 >
-                  {isBullet && <span className="text-primary mt-1">•</span>}
+                  {isBullet && (
+                    <span className="text-primary mt-1">•</span>
+                  )}
+
                   <span className="flex-1">
-                    {cleanSub.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-                      part.startsWith("**") && part.endsWith("**") ? (
-                        <strong key={i} className="text-primary font-semibold">
-                          {part.slice(2, -2)}
-                        </strong>
-                      ) : (
-                        <span key={i}>{part}</span>
-                      ),
-                    )}
+                    {cleanSub
+                      .split(/(\*\*[^*]+\*\*)/g)
+                      .map((part, i) =>
+                        part.startsWith("**") &&
+                        part.endsWith("**") ? (
+                          <strong
+                            key={i}
+                            className="text-primary font-semibold"
+                          >
+                            {part.slice(2, -2)}
+                          </strong>
+                        ) : (
+                          <span key={i}>{part}</span>
+                        ),
+                      )}
                   </span>
                 </p>
               );
@@ -66,9 +85,12 @@ function FormattedMessage({ text }: { text: string }) {
 
 export function RecalibrateModal() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{ role: "user" | "model"; text: string }[]>([]);
+  const [messages, setMessages] = useState<
+    { role: "user" | "model"; text: string }[]
+  >([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,8 +100,9 @@ export function RecalibrateModal() {
   }, [messages, isTyping]);
 
   const getSystemPrompt = () => {
-    const currentProfile = localStorage.getItem("ascension_user_profile") || "{}";
-    
+    const currentProfile =
+      localStorage.getItem("ascension_user_profile") || "{}";
+
     return `You are the Project Ascension performance coach. The user wants to recalibrate their existing 12-month protocol.
 
 Here is their CURRENT protocol configuration (JSON):
@@ -87,66 +110,89 @@ ${currentProfile}
 
 The user will tell you what they want to change (e.g., 'drop my calories to 2000', 'shift my Phase 2 start date to December', 'change habits to actual daily behavioral actions instead of macro targets').
 
-Discuss the changes with them briefly and directly. 
+Discuss the changes with them briefly and directly.
 
 CRITICAL FORMATTING RULE:
 Never squash lists, numbers, or section headers onto the same line. Every section header, every numbered point, and every bullet point MUST be on its own brand-new line separated by a blank line.
 
-Once the changes are agreed upon and finalized, you MUST output the completely updated raw JSON object wrapped in \`\`\`json tags. 
+Once the changes are agreed upon and finalized, you MUST output the completely updated raw JSON object wrapped in \`\`\`json tags.
 
 CRITICAL RULES:
-1. Maintain the EXACT SAME JSON SCHEMA as the current profile. 
-2. Do not omit any existing data unless the user explicitly asked to remove it. 
+1. Maintain the EXACT SAME JSON SCHEMA as the current profile.
+2. Do not omit any existing data unless the user explicitly asked to remove it.
 3. Habits must be daily actionable behaviors (e.g., "10 mins mobility", "Read 10 pages"), NOT macro splits or protein counts.
 4. After outputting the JSON, say nothing else.`;
   };
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
+
     if (open && messages.length === 0) {
-      setMessages([{ role: "model", text: "Coach online. What are we recalibrating today?" }]);
+      setMessages([
+        {
+          role: "model",
+          text: "Coach online. What are we recalibrating today?",
+        },
+      ]);
     }
   };
 
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
-    
+
     const apiKey = localStorage.getItem("p35_gemini_api_key");
+
     if (!apiKey) {
       toast.error("Gemini API key missing.");
       return;
     }
 
-    const newMsgs = [...messages, { role: "user" as const, text }];
+    const newMsgs = [
+      ...messages,
+      { role: "user" as const, text },
+    ];
+
     setMessages(newMsgs);
     setInput("");
     setIsTyping(true);
 
-    const models = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"];
+    const models = [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-2.5-flash",
+    ];
+
     let reply = "";
     let success = false;
 
     try {
-      const contents = newMsgs.map(m => ({
+      const contents = newMsgs.map((m) => ({
         role: m.role,
-        parts: [{ text: m.text }]
+        parts: [{ text: m.text }],
       }));
 
       for (const model of models) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        
+
         const res = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: getSystemPrompt() }] },
-            contents: contents,
+            systemInstruction: {
+              parts: [{ text: getSystemPrompt() }],
+            },
+            contents,
           }),
         });
 
         if (res.ok) {
           const data = await res.json();
-          reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+          reply =
+            data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
           success = true;
           break;
         }
@@ -157,25 +203,50 @@ CRITICAL RULES:
       }
 
       if (reply.includes("```json") && reply.includes("```")) {
-        const jsonString = reply.split("```json")[1].split("```")[0].trim();
+        const jsonString = reply
+          .split("```json")[1]
+          .split("```")[0]
+          .trim();
+
         try {
           const updatedProfile = JSON.parse(jsonString);
-          localStorage.setItem("ascension_user_profile", JSON.stringify(updatedProfile));
-          
-          toast.success("Protocol Recalibrated. Reloading Command Centre.");
+
+          localStorage.setItem(
+            "ascension_user_profile",
+            JSON.stringify(updatedProfile),
+          );
+
+          toast.success(
+            "Protocol Recalibrated. Reloading Command Centre.",
+          );
+
           setIsOpen(false);
-          
-          setTimeout(() => window.location.reload(), 1500);
+
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+
           return;
         } catch (e) {
           console.error("Failed to parse AI JSON", e);
-          toast.error("AI generated invalid data. Tell it to try again.");
+          toast.error(
+            "AI generated invalid data. Tell it to try again.",
+          );
         }
       }
 
-      setMessages([...newMsgs, { role: "model", text: reply }]);
+      setMessages([
+        ...newMsgs,
+        {
+          role: "model",
+          text: reply,
+        },
+      ]);
     } catch (err) {
-      toast.error("Failed to connect to Coach. Check your API key.");
+      console.error(err);
+      toast.error(
+        "Failed to connect to Coach. Check your API key.",
+      );
     } finally {
       setIsTyping(false);
     }
@@ -184,23 +255,89 @@ CRITICAL RULES:
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 text-xs">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 text-xs"
+        >
           <Settings2 className="size-4" />
           Recalibrate Plan
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg w-[95vw] h-[85dvh] max-h-[85dvh] flex flex-col overflow-hidden p-4">
-        <DialogHeader className="shrink-0 pb-2">
+
+      <DialogContent
+        className="
+          w-[calc(100vw-2rem)]
+          max-w-lg
+          h-[min(85dvh,700px)]
+          max-h-[calc(100dvh-2rem)]
+          flex
+          flex-col
+          overflow-hidden
+          p-0
+          gap-0
+        "
+      >
+        {/* =====================================================
+            FIXED HEADER
+            ===================================================== */}
+        <DialogHeader
+          className="
+            shrink-0
+            px-4
+            pt-4
+            pb-3
+            border-b
+            border-border
+            bg-background
+            z-10
+          "
+        >
           <DialogTitle className="flex items-center gap-2 text-primary">
-            <Settings2 className="size-5" />
-            AI Protocol Recalibration
+            <Settings2 className="size-5 shrink-0" />
+            <span>AI Protocol Recalibration</span>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-2 pr-1" ref={scrollRef}>
+        {/* =====================================================
+            SCROLLING CHAT AREA
+            ===================================================== */}
+        <div
+          ref={scrollRef}
+          className="
+            flex-1
+            min-h-0
+            overflow-y-auto
+            overscroll-contain
+            px-4
+            py-4
+            space-y-4
+          "
+        >
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[90%] rounded-xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-surface-2/60 text-foreground"}`}>
+            <div
+              key={i}
+              className={`flex ${
+                m.role === "user"
+                  ? "justify-end"
+                  : "justify-start"
+              }`}
+            >
+              <div
+                className={`
+                  max-w-[90%]
+                  rounded-xl
+                  px-4
+                  py-3
+                  text-sm
+                  break-words
+                  ${
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface-2/60 text-foreground"
+                  }
+                `}
+              >
                 {m.role === "model" ? (
                   <FormattedMessage text={m.text} />
                 ) : (
@@ -209,32 +346,84 @@ CRITICAL RULES:
               </div>
             </div>
           ))}
+
           {isTyping && (
             <div className="flex justify-start">
-              <div className="bg-surface-2/60 text-muted-foreground rounded-xl px-4 py-3 flex items-center gap-2 text-sm">
-                <Loader2 className="size-4 animate-spin" /> Coach is analyzing...
+              <div
+                className="
+                  bg-surface-2/60
+                  text-muted-foreground
+                  rounded-xl
+                  px-4
+                  py-3
+                  flex
+                  items-center
+                  gap-2
+                  text-sm
+                "
+              >
+                <Loader2 className="size-4 animate-spin" />
+                Coach is analyzing...
               </div>
             </div>
           )}
         </div>
 
-        <div className="shrink-0 pt-2 pb-1 bg-background flex items-center gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
-            placeholder="E.g., 'Fix my habits...'..."
-            className="flex-1 rounded-full border border-border bg-surface-2/50 px-4 py-3 text-sm focus:border-primary focus:outline-none"
-          />
-          <Button
-            size="icon"
-            className="size-11 shrink-0 rounded-full"
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isTyping}
-          >
-            <Send className="size-4" />
-          </Button>
+        {/* =====================================================
+            FIXED INPUT AREA
+            ===================================================== */}
+        <div
+          className="
+            shrink-0
+            w-full
+            border-t
+            border-border
+            bg-background
+            px-4
+            pt-3
+            pb-[max(0.75rem,env(safe-area-inset-bottom))]
+          "
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage(input);
+                }
+              }}
+              placeholder="E.g., 'Fix my habits...'"
+              className="
+                flex-1
+                min-w-0
+                h-11
+                rounded-full
+                border
+                border-border
+                bg-surface-2/50
+                px-4
+                text-sm
+                text-foreground
+                placeholder:text-muted-foreground
+                focus:border-primary
+                focus:outline-none
+                focus:ring-1
+                focus:ring-primary
+              "
+            />
+
+            <Button
+              size="icon"
+              className="size-11 shrink-0 rounded-full"
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || isTyping}
+            >
+              <Send className="size-4" />
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
