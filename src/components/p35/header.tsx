@@ -23,13 +23,13 @@ export function DashboardHeader() {
         <div className="min-w-0">
           <p className="stat-label">Character sheet</p>
           <h1 className="text-2xl leading-tight font-bold">
-            Project 35: <span className="text-primary">The Undeniable Standard</span>
+            Project Ascension: <span className="text-primary">Same Man, Higher Standards</span>
           </h1>
         </div>
       </div>
 
       <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">
-        Built over years. Ready for everything. Arrive at 35 in undeniable shape.
+        Forging unbreakable mental grit and a vascula,combat-ready physique.
       </p>
 
       {/* Clean Phase Badge: Phase 1 • Block 1: The Clock */}
