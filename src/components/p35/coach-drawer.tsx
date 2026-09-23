@@ -1,530 +1,911 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import type { HevyWorkout } from "@/lib/hevy.functions";
-import type { WeightEntry } from "@/components/p35/weight-card";
-import { DAILY_TARGETS, GOAL_WEIGHT, getActiveBlockCountdown } from "@/lib/project35";
-import { useCoachMessages, type CoachMsg } from "@/lib/p35-cloud";
-import { KeyRound, Loader2, MessageSquare, RefreshCw, Send, Sparkles, Cpu } from "lucide-react";
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Key,
+  Loader2,
+  Send,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
-type Msg = CoachMsg;
+import type { HevyWorkout } from "@/lib/hevy.functions";
+import { useCoachMessages } from "@/lib/p35-cloud";
 
-const SYSTEM_INSTRUCTIONS = `You are the Project Ascension performance coach: direct, knowledgeable, conversational, and technically sharp.
+// ============================================================
+// TYPES
+// ============================================================
 
-CONTEXT & TONE:
-- Your name is Coach Clive.
-- You are my coach. You can call me Chief, Boss or mate but only if it really calls for it. in general conversation refrain from using a name just keep it precise to the point you are making and only use names if it explicitly needs it.
-- You are an expert strength and conditioning partner helping the athlete progress across their current macrocycle toward their target peak date.
-- Match the user's intent. If they greet you ("hey", "hello"), respond naturally and ask what they want to tackle today.
-- If they ask general questions about exercise swaps, pain management, recovery, upcoming phases, or pacing, provide direct, intelligent advice grounded in their current block targets without forcing rigid templates.
-- Strictly respect the exact unit logged by the user for lifts (whether lbs or kg) and pounds for bodyweight. Never convert or translate their logged weight units. Keep responses crisp and actionable.
+type CoachMsg = {
+  id?: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt?: string;
+};
 
-WORKOUT ANALYSIS MODE:
-Trigger this specific structured format ONLY when the user explicitly asks to analyse, review, or evaluate a workout/session:
-- For resistance exercises:
-  * Evaluate the final set RPE:
-    - RPE < 7.0: PROMOTE (+ load next session).
-    - RPE 7.0–8.0: PROGRESS REPS (+1 rep next session).
-    - RPE 8.5–9.0: STICK (Consolidate weight/form).
-    - RPE 9.5–10.0: HOLD OR DROP (-1 rep).
-    - Pain flag: SWAP OR DELOAD (-20% or neutral grip alternative).
-  * Never assume an initial heavier set with fewer reps is an "adjustment" or warm-up. Treat decreasing weight across sets as intentional reverse pyramid or load drops.
-- For cardio/conditioning/martial arts (walking, treadmill, elliptical, bjj, grappling, etc.):
-  * Evaluate pace, duration, and distance against daily step and aerobic recovery goals.
-  * Next session call should focus on maintaining baseline, increasing duration, or managing joint impact.
-- For each exercise, use the exact label format:
-- **Logged:** [details]
-- **Assessment:** [details]
-- **Next Session Call:** [details]
-- **Athlete Notes Feedback:** [details]
+type CoachDrawerProps = {
+  workout?: HevyWorkout | null;
+  entries?: any[];
+  userId?: string;
+};
 
-- Conclude ONLY workout analyses with a 3-bullet "Next Session Battle Plan".`;
+// ============================================================
+// GEMINI MODELS
+// ============================================================
 
-function isCardioExercise(exerciseTitle: string, sets: any[]): boolean {
-  const title = exerciseTitle.toLowerCase();
-  const cardioKeywords = ["walk", "run", "treadmill", "elliptical", "cycle", "bike", "rowing", "stair", "bjj", "grappling", "wrestling", "mat"];
-  const matchesKeyword = cardioKeywords.some((k) => title.includes(k));
-  const hasCardioMetrics = sets.some(
-    (s) =>
-      s.distance_meters != null ||
-      s.distanceMeters != null ||
-      s.duration_seconds != null ||
-      s.durationSeconds != null ||
-      s.km != null ||
-      (s.weightKg == null && s.weight_kg == null && s.weightLbs == null && s.reps == null)
-  );
-  return matchesKeyword || hasCardioMetrics;
+const GEMINI_MODELS = [
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+];
+
+// ============================================================
+// SYSTEM INSTRUCTIONS
+// ============================================================
+
+const SYSTEM_INSTRUCTIONS = `
+You are Coach Clive, the AI strength and progression coach inside Project 35.
+
+Your job is to analyse the user's actual training data, identify trends, explain progression, and give practical recommendations.
+
+IMPORTANT DATA RULES:
+
+1. The workout data supplied in LIVE WORKOUT CONTEXT is authoritative.
+2. Do not invent workouts, sets, weights, reps, dates, RPEs or progression.
+3. Do not assume that a workout is the same as another workout merely because the exercises or title look similar.
+4. A workout is considered previously analysed ONLY when the exact SESSION ID is explicitly listed in PREVIOUSLY ANALYSED SESSION IDS.
+5. Never say "we've already checked this", "we've already gone through this", "we discussed this workout before", or equivalent merely because:
+   - the exercises are similar;
+   - the workout title is similar;
+   - the weights are similar;
+   - an older workout appears in the conversation;
+   - you remember a previous recommendation.
+6. If the exact current SESSION ID is not listed as previously analysed, treat the current workout as NEW.
+7. Never claim to have seen data that is not included in the current request.
+8. When information is missing, say that it is missing rather than filling the gap with an assumption.
+
+WORKOUT ANALYSIS:
+
+When analysing a workout:
+- Analyse the exact session supplied.
+- Compare it with previous sessions only when previous session data has actually been supplied.
+- Look at exercise performance, reps, load, volume, RPE where available, and progression.
+- Distinguish genuine progression from changes caused by different rep ranges or exercise selection.
+- Do not call something progression simply because the exercise name is the same.
+- Be honest about uncertainty.
+
+CONVERSATION MEMORY:
+
+Normal coaching conversation may contain previous messages.
+
+However, old conversation messages do NOT prove that the current workout has previously been analysed.
+
+For a workout-analysis request, the CURRENT SESSION ID and CURRENT WORKOUT DATA take priority over any previous conversational discussion.
+
+DATES:
+
+Use UK date format:
+DD/MM/YYYY.
+
+STYLE:
+
+Be direct, practical and conversational.
+
+Do not excessively repeat the user's data.
+
+When discussing progression, give the user a clear explanation of what happened and what they should do next.
+`;
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function formatUKDate(value?: string | null): string {
+  if (!value) return "Unknown date";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
 }
 
-function formatCardio(s: any): string {
-  const meters =
-    s.distance_meters ??
-    s.distanceMeters ??
-    s.distance ??
-    (s.km != null ? s.km * 1000 : null);
+function normalise(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
-  const kmString = meters != null ? `${(meters / 1000).toFixed(2)} km` : null;
+/**
+ * Creates a deterministic ID from the actual workout contents.
+ *
+ * This means two sessions with the same exercise names but different
+ * sets/weights/reps will normally have different IDs.
+ */
+function getWorkoutSessionId(workout: HevyWorkout | null | undefined): string {
+  if (!workout) return "no-workout";
 
-  const totalSec =
-    s.duration_seconds ??
-    s.durationSeconds ??
-    s.duration ??
-    s.time;
+  const fingerprint = {
+    title: normalise(workout.title),
+    startTime: normalise(workout.startTime),
+    exercises: (workout.exercises ?? []).map((exercise) => ({
+      title: normalise(exercise.title),
+      notes: normalise(exercise.notes),
+      sets: (exercise.sets ?? []).map((set) => ({
+        weightKg: set.weightKg ?? null,
+        weightLbs: set.weightLbs ?? null,
+        reps: set.reps ?? null,
+        rpe: set.rpe ?? null,
+        distance_meters: set.distance_meters ?? null,
+        duration_seconds: set.duration_seconds ?? null,
+      })),
+    })),
+  };
 
-  let timeString: string | null = null;
-  if (typeof totalSec === "number") {
-    const hrs = Math.floor(totalSec / 3600);
-    const mins = Math.floor((totalSec % 3600) / 60);
-    const secs = totalSec % 60;
-    if (hrs > 0) {
-      timeString = `${hrs}h ${mins}min`;
-    } else if (mins > 0) {
-      timeString = `${mins}min`;
-    } else {
-      timeString = `${secs}s`;
+  const input = JSON.stringify(fingerprint);
+
+  // Small deterministic browser-safe hash.
+  let hash = 2166136261;
+
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash +=
+      (hash << 1) +
+      (hash << 4) +
+      (hash << 7) +
+      (hash << 8) +
+      (hash << 24);
+  }
+
+  return `workout-${(hash >>> 0).toString(16)}`;
+}
+
+// ============================================================
+// WORKOUT CONTEXT
+// ============================================================
+
+function buildWorkoutContext(
+  workout: HevyWorkout | null,
+  entries: any[] = [],
+) {
+  if (!workout) {
+    return `
+CURRENT WORKOUT:
+No workout is currently loaded.
+
+Do not pretend that a workout is available.
+`;
+  }
+
+  const sessionId = getWorkoutSessionId(workout);
+
+  const lines: string[] = [];
+
+  lines.push("============================================================");
+  lines.push("CURRENT WORKOUT — THIS IS THE SESSION TO ANALYSE");
+  lines.push("============================================================");
+
+  lines.push(`SESSION ID: ${sessionId}`);
+  lines.push(`TITLE: ${workout.title || "Untitled workout"}`);
+  lines.push(`DATE: ${formatUKDate(workout.startTime)}`);
+  lines.push(`RAW START TIME: ${workout.startTime || "Unknown"}`);
+  lines.push("");
+
+  for (const exercise of workout.exercises ?? []) {
+    lines.push(`EXERCISE: ${exercise.title}`);
+
+    if (exercise.notes) {
+      lines.push(`NOTES: ${exercise.notes}`);
     }
-  } else if (typeof totalSec === "string") {
-    timeString = totalSec;
+
+    for (let i = 0; i < (exercise.sets ?? []).length; i++) {
+      const set = exercise.sets[i];
+
+      const weight =
+        set.weightKg != null
+          ? `${set.weightKg} kg`
+          : set.weightLbs != null
+            ? `${set.weightLbs} lb`
+            : "bodyweight / no load recorded";
+
+      const reps =
+        set.reps != null ? `${set.reps} reps` : "reps not recorded";
+
+      const rpe =
+        set.rpe != null ? ` | RPE ${set.rpe}` : "";
+
+      const distance =
+        set.distance_meters != null
+          ? ` | ${set.distance_meters} m`
+          : "";
+
+      const duration =
+        set.duration_seconds != null
+          ? ` | ${set.duration_seconds}s`
+          : "";
+
+      lines.push(
+        `  Set ${i + 1}: ${weight} × ${reps}${rpe}${distance}${duration}`,
+      );
+    }
+
+    lines.push("");
   }
 
-  const parts = [timeString, kmString].filter(Boolean);
-  return parts.length > 0 ? parts.join(" • ") : "Completed";
-}
+  if (entries.length > 0) {
+    lines.push("============================================================");
+    lines.push("PROJECT 35 CONTEXT");
+    lines.push("============================================================");
 
-function formatWeight(s: any, exerciseTitle: string) {
-  const rawWeight = s.weightLbs ?? s.weight_lbs ?? s.weightKg ?? s.weight_kg;
-  if (rawWeight == null) return "BW";
-
-  const titleLower = exerciseTitle.toLowerCase();
-  const isCableOrLbs =
-    titleLower.includes("cable") ||
-    titleLower.includes("pushdown") ||
-    titleLower.includes("fly");
-
-  if (s.weightLbs != null || s.weight_lbs != null) {
-    const val = s.weightLbs ?? s.weight_lbs;
-    const snapped = Math.round(val * 2) / 2;
-    return `${snapped}lbs`;
+    lines.push(`Relevant entries available: ${entries.length}`);
+    lines.push("");
   }
 
-  if (isCableOrLbs) {
-    const rawLbs = rawWeight * 2.20462;
-    const snappedLbs = Math.round(rawLbs * 2) / 2;
-    return `${snappedLbs}lbs`;
-  }
+  lines.push("============================================================");
+  lines.push("ANALYSIS IDENTITY RULE");
+  lines.push("============================================================");
+  lines.push(
+    `The exact current session is "${sessionId}".`,
+  );
+  lines.push(
+    "Treat this workout as NEW unless this exact session ID appears in the explicit previously-analysed list supplied with the request.",
+  );
 
-  const roundedKg = Number.isInteger(rawWeight) ? rawWeight : Math.round(rawWeight * 10) / 10;
-  return `${roundedKg}kg`;
-}
-
-function buildContext(workout: HevyWorkout | null, entries: WeightEntry[]) {
-  const block = getActiveBlockCountdown();
-  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  const trend =
-    sorted.slice(-6).map((e) => `${e.date}: ${e.weight} lb`).join(", ") ||
-    "no weigh-ins logged yet";
-  const latest = sorted[sorted.length - 1]?.weight;
-
-  const lines = [
-    `CURRENT BLOCK: ${block.phaseTitle} • ${block.blockName} (Week ${block.currentWeek} of ${block.totalWeeks})`,
-    `Block Focus: ${block.goal}`,
-    `Bodyweight Target: ${GOAL_WEIGHT} lbs (Latest logged: ${latest ?? "unknown"} lbs | Trend: ${trend})`,
-    `Daily Nutrition/Habit Standards: ${DAILY_TARGETS.caloriesMin}–${DAILY_TARGETS.caloriesMax} kcal, ${DAILY_TARGETS.protein}g+ protein, ${DAILY_TARGETS.steps} steps daily.`,
-  ];
-
-  if (workout) {
-    lines.push(
-      `LATEST WORKOUT LOGGED IN HEVY: "${workout.title}" on ${workout.startTime ?? "recent"}.`,
-      ...workout.exercises.map((ex) => {
-        const isCardio = isCardioExercise(ex.title, ex.sets);
-        const lastSet = ex.sets[ex.sets.length - 1];
-
-        if (isCardio) {
-          const cardioSummary = ex.sets.map((s: any) => formatCardio(s)).join(", ");
-          const notesStr = ex.notes ? ` | Notes: "${ex.notes}"` : "";
-          return `- ${ex.title} (Cardio/Conditioning): ${cardioSummary}${notesStr}`;
-        }
-
-        const setStr = ex.sets
-          .map((s: any) => {
-            const weightDisplay = formatWeight(s, ex.title);
-            return `${weightDisplay} x ${s.reps ?? "?"}${
-              s.rpe != null ? ` @RPE${s.rpe}` : ""
-            }`;
-          })
-          .join(", ");
-        const rpeStr = lastSet?.rpe != null ? ` | Final set RPE: ${lastSet.rpe}` : "";
-        const notesStr = ex.notes ? ` | Notes: "${ex.notes}"` : "";
-        const setNotesStr = lastSet?.notes ? ` | Set notes: "${lastSet.notes}"` : "";
-        return `- ${ex.title}: ${setStr}${rpeStr}${notesStr}${setNotesStr}`;
-      }),
-    );
-  } else {
-    lines.push("No Hevy workout synced yet.");
-  }
   return lines.join("\n");
 }
 
-const FALLBACK_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-2-flash",
-];
+// ============================================================
+// FULL AI CONTEXT
+// ============================================================
+
+function buildContext(
+  workout: HevyWorkout | null,
+  entries: any[] = [],
+) {
+  return `
+${SYSTEM_INSTRUCTIONS}
+
+============================================================
+LIVE PROJECT 35 CONTEXT
+============================================================
+
+Current coaching context is supplied by the application.
+
+${buildWorkoutContext(workout, entries)}
+`;
+}
+
+// ============================================================
+// GEMINI CALL
+// ============================================================
 
 async function callGemini(
   apiKey: string,
   history: CoachMsg[],
   newPrompt: string,
   systemContext: string,
-): Promise<{ text: string; model: string }> {
-  const recentHistory = history.slice(-10);
+  includeHistory: boolean,
+) {
+  let lastError = "";
+
+  /*
+   * IMPORTANT:
+   *
+   * For workout analysis we deliberately DO NOT send the old
+   * conversation history.
+   *
+   * Gemini's generateContent API treats the contents array as
+   * conversation context. Sending previous analysis messages can
+   * therefore make a new workout appear to have been discussed.
+   *
+   * Normal chat still receives the recent conversation.
+   */
+  const recentHistory = includeHistory ? history.slice(-10) : [];
 
   const contents = [
-    ...recentHistory.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
+    ...recentHistory.map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }],
     })),
-    { role: "user", parts: [{ text: newPrompt }] },
+
+    {
+      role: "user",
+      parts: [{ text: newPrompt }],
+    },
   ];
 
-  const payload = {
-    systemInstruction: {
-      parts: [
-        {
-          text: `${SYSTEM_INSTRUCTIONS}\n\nATHLETE PROFILE & LIVE METRICS:\n${systemContext}`,
-        },
-      ],
-    },
-    contents,
-  };
-
-  let lastErrorMsg = "Gemini request failed.";
-
-  for (const model of FALLBACK_MODELS) {
+  for (const model of GEMINI_MODELS) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text: systemContext,
+                },
+              ],
+            },
+            contents,
+            generationConfig: {
+              temperature: 0.35,
+            },
+          }),
+        },
+      );
 
-      const data = await res.json().catch(() => ({}));
+      if (!response.ok) {
+        const errorText = await response.text();
 
-      if (res.ok) {
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return { text, model };
+        lastError = `${model}: ${response.status} ${errorText}`;
+
+        continue;
       }
 
-      lastErrorMsg = data.error?.message || `HTTP ${res.status} on ${model}`;
-      console.warn(`Model ${model} failed (${lastErrorMsg}). Cascading to next fallback...`);
-    } catch (err) {
-      lastErrorMsg = err instanceof Error ? err.message : "Network error";
+      const data = await response.json();
+
+      const text =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((part: any) => part?.text ?? "")
+          .join("")
+          .trim() || "";
+
+      if (!text) {
+        lastError = `${model}: Gemini returned an empty response`;
+        continue;
+      }
+
+      return {
+        text,
+        model,
+      };
+    } catch (error) {
+      lastError =
+        `${model}: ` +
+        (error instanceof Error ? error.message : String(error));
+
+      continue;
     }
   }
 
-  throw new Error(`All models failed: ${lastErrorMsg}`);
-}
-
-function CoachText({ text }: { text: string }) {
-  const cleanedText = text
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*[*-]\s+/gm, "• ");
-
-  return (
-    <div className="space-y-1.5 whitespace-pre-wrap">
-      {cleanedText.split("\n").map((line, idx) => {
-        const isHeader = /^[A-Z\s]{4,}:?$/.test(line.trim()) || line.trim().startsWith("WORKOUT ANALYSIS");
-
-        if (isHeader) {
-          return (
-            <p key={idx} className="font-bold text-primary mt-2">
-              {line.trim()}
-            </p>
-          );
-        }
-
-        return (
-          <p key={idx}>
-            {line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-              part.startsWith("**") && part.endsWith("**") ? (
-                <strong key={i} className="text-primary font-semibold">
-                  {part.slice(2, -2)}
-                </strong>
-              ) : (
-                <span key={i}>{part}</span>
-              ),
-            )}
-          </p>
-        );
-      })}
-    </div>
+  throw new Error(
+    lastError || "Unable to get a response from Gemini.",
   );
 }
 
-export function CoachDrawer({
+// ============================================================
+// COMPONENT
+// ============================================================
+
+export default function CoachDrawer({
   workout,
-  entries,
+  entries = [],
   userId,
-}: {
-  workout: HevyWorkout | null;
-  entries: WeightEntry[];
-  userId: string | null;
-}) {
+}: CoachDrawerProps) {
+  const {
+    messages,
+    add,
+    clear,
+  } = useCoachMessages(userId);
+
   const [open, setOpen] = useState(false);
-  const { messages, add } = useCoachMessages(userId);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
-  
-  // Initialize completely empty to prevent hydration mismatch
   const [apiKey, setApiKey] = useState("");
-  const [draftApiKey, setDraftApiKey] = useState("");
-  
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
-  const [activeModel, setActiveModel] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showKeyInput, setShowKeyInput] = useState(false);
 
-  // Load the saved key immediately after the first safe render
+  /*
+   * Keep a local copy of the workout so the Coach can immediately
+   * pick up a newly imported/manual workout.
+   */
+  const [activeWorkout, setActiveWorkout] =
+    useState<HevyWorkout | null>(workout ?? null);
+
+  // ============================================================
+  // API KEY
+  // ============================================================
+
   useEffect(() => {
-    const savedKey = localStorage.getItem("p35_gemini_api_key") || "";
-    setApiKey(savedKey);
-    setDraftApiKey(savedKey);
+    if (typeof window === "undefined") return;
+
+    const saved = localStorage.getItem("p35_gemini_api_key");
+
+    if (saved) {
+      setApiKey(saved);
+    }
   }, []);
 
-  const handleInputResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const target = e.target;
-    target.style.height = "auto";
-    target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
-  };
+  // ============================================================
+  // PROP -> LOCAL WORKOUT
+  // ============================================================
 
   useEffect(() => {
-    if (!open) return;
-    const timer = setTimeout(() => {
-      endRef.current?.scrollIntoView({ behavior: "auto" });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [open, messages.length]);
-
-  useEffect(() => {
-    if (typeof document === "undefined" || !document.body || !endRef.current) return;
-    endRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  const saveGeminiKey = (key: string) => {
-    const clean = key.trim();
-    if (typeof window !== "undefined") {
-      localStorage.setItem("p35_gemini_api_key", clean);
+    if (workout) {
+      setActiveWorkout(workout);
     }
-    setApiKey(clean);
-    setKeyDialogOpen(false);
-    toast.success(clean ? "Gemini key saved." : "Gemini key removed.");
-  };
+  }, [workout]);
 
-  const send = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || loading) return;
+  // ============================================================
+  // LOAD CACHED WORKOUT
+  // ============================================================
 
-    if (!apiKey) {
-      setKeyDialogOpen(true);
-      toast.error("Add your Gemini API key first.");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    /*
+     * If the parent hasn't supplied a workout yet, use the latest
+     * cached workout from the Hevy importer/manual parser.
+     */
+    if (!workout) {
+      try {
+        const cached = localStorage.getItem(
+          "p35_cached_workout",
+        );
+
+        if (cached) {
+          const parsed = JSON.parse(cached);
+
+          if (parsed) {
+            setActiveWorkout(parsed);
+          }
+        }
+      } catch {
+        // Ignore malformed cache.
+      }
+    }
+  }, [workout]);
+
+  // ============================================================
+  // LIVE WORKOUT UPDATE EVENT
+  // ============================================================
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleWorkoutUpdate = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<HevyWorkout>;
+
+      if (!customEvent.detail) return;
+
+      setActiveWorkout(customEvent.detail);
+    };
+
+    window.addEventListener(
+      "p35:workout-updated",
+      handleWorkoutUpdate,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "p35:workout-updated",
+        handleWorkoutUpdate,
+      );
+    };
+  }, []);
+
+  // ============================================================
+  // CURRENT SESSION ID
+  // ============================================================
+
+  const currentSessionId = useMemo(
+    () => getWorkoutSessionId(activeWorkout),
+    [activeWorkout],
+  );
+
+  // ============================================================
+  // SAVE API KEY
+  // ============================================================
+
+  const saveApiKey = () => {
+    const trimmed = apiKey.trim();
+
+    if (!trimmed) {
+      toast.error("Enter your Gemini API key.");
       return;
     }
 
-    setInput("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+    localStorage.setItem(
+      "p35_gemini_api_key",
+      trimmed,
+    );
+
+    setApiKey(trimmed);
+    setShowKeyInput(false);
+
+    toast.success("Gemini API key saved.");
+  };
+
+  // ============================================================
+  // SEND MESSAGE
+  // ============================================================
+
+  const sendMessage = async (
+    textOverride?: string,
+    workoutAnalysis = false,
+  ) => {
+    const trimmed = (
+      textOverride ?? input
+    ).trim();
+
+    if (!trimmed || loading) return;
+
+    if (!apiKey.trim()) {
+      setShowKeyInput(true);
+      toast.error(
+        "Add your Gemini API key before using Coach Clive.",
+      );
+      return;
     }
+
     setLoading(true);
-    setLastFailedPrompt(null);
+
+    const currentHistory = [...messages];
 
     try {
-      const currentHistory = [...messages];
-      await add.mutateAsync({ role: "user", content: trimmed });
-      const { text: reply, model } = await callGemini(
-        apiKey,
+      /*
+       * For workout analysis we create a completely isolated
+       * request.
+       *
+       * This is the important fix.
+       *
+       * The current workout is supplied explicitly and previous
+       * Coach messages are NOT sent to Gemini.
+       */
+      const prompt = workoutAnalysis
+        ? `
+WORKOUT ANALYSIS REQUEST
+
+CURRENT SESSION ID:
+${currentSessionId}
+
+IMPORTANT:
+Analyse ONLY the current workout contained in LIVE PROJECT 35 CONTEXT.
+
+This is a fresh analysis request.
+
+Do NOT assume this workout has previously been analysed.
+
+Only say that it was previously analysed if the exact current SESSION ID is explicitly present in a supplied previously-analysed session list.
+
+User request:
+${trimmed}
+`
+        : trimmed;
+
+      /*
+       * Workout analysis = isolated context.
+       *
+       * Normal chat = normal recent conversation.
+       */
+      const result = await callGemini(
+        apiKey.trim(),
         currentHistory,
-        trimmed,
-        buildContext(workout, entries),
+        prompt,
+        buildContext(activeWorkout, entries),
+        !workoutAnalysis,
       );
-      setActiveModel(model);
-      await add.mutateAsync({ role: "assistant", content: reply });
+
+      await add.mutateAsync({
+        role: "user",
+        content: trimmed,
+      });
+
+      await add.mutateAsync({
+        role: "assistant",
+        content: result.text,
+      });
+
+      if (!textOverride) {
+        setInput("");
+      }
+
+      if (workoutAnalysis) {
+        toast.success(
+          `Workout analysed: ${currentSessionId}`,
+        );
+      }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Coach is unavailable.";
-      toast.error(errorMessage);
-      setLastFailedPrompt(trimmed);
+      console.error("Coach Gemini error:", error);
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Coach could not respond.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button
-            size="icon"
-            aria-label="Open Coach AI"
-            className="glow-ring fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 size-14 rounded-full"
-          >
-            <MessageSquare className="size-6" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="bottom" className="flex h-[88vh] flex-col gap-0 p-0">
-          <SheetHeader className="border-b border-border px-5 py-4 text-left">
-            <div className="flex items-center justify-between">
-              <SheetTitle className="flex items-center gap-2">
-                <Sparkles className="size-5 text-primary" /> Coach Clive 
-              </SheetTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setKeyDialogOpen(true)}
-                aria-label="Gemini API Key Settings"
-              >
-                <KeyRound className="size-5" />
-              </Button>
-            </div>
-            <SheetDescription>Direct, no-fluff accountability on your numbers.</SheetDescription>
-          </SheetHeader>
+  // ============================================================
+  // KEYBOARD
+  // ============================================================
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-            {messages.length === 0 && !loading && (
-              <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Ask anything about your lifts, exercise swaps, upcoming phases, or tap the button below for a full session breakdown.
-              </p>
-            )}
-            {messages.map((m, i) => {
-              const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
-              return (
-                <div key={i} className="space-y-1">
-                  <div
-                    className={
-                      m.role === "user"
-                        ? "ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground"
-                        : "mr-auto max-w-[90%] rounded-2xl rounded-bl-sm border border-border bg-surface-2/70 px-4 py-2.5 text-sm whitespace-pre-wrap"
-                    }
-                  >
-                    {m.role === "assistant" ? <CoachText text={m.content} /> : m.content}
-                  </div>
-                  {isLastAssistant && activeModel && (
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground/60 pl-2">
-                      <Cpu className="size-2.5" />
-                      <span>{activeModel}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {loading && (
-              <div className="mr-auto flex items-center gap-2 rounded-2xl border border-border bg-surface-2/70 px-4 py-2.5 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Thinking...
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+
+      void sendMessage();
+    }
+  };
+
+  // ============================================================
+  // UI
+  // ============================================================
+
+  return (
+    <div className="w-full">
+      <div className="rounded-xl border bg-card shadow-sm">
+        {/* ======================================================
+            HEADER
+        ====================================================== */}
+
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex w-full items-center justify-between p-4 text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <Bot className="h-5 w-5 text-primary" />
+            </div>
+
+            <div>
+              <div className="font-semibold">
+                Coach Clive
               </div>
-            )}
-            {lastFailedPrompt && !loading && (
-              <div className="flex items-center justify-between rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
-                <span>Request failed. Tap retry when ready.</span>
+
+              <div className="text-xs text-muted-foreground">
+                AI training & progression coach
+              </div>
+            </div>
+          </div>
+
+          {open ? (
+            <ChevronUp className="h-5 w-5" />
+          ) : (
+            <ChevronDown className="h-5 w-5" />
+          )}
+        </button>
+
+        {/* ======================================================
+            BODY
+        ====================================================== */}
+
+        {open && (
+          <div className="border-t">
+            {/* ==================================================
+                CURRENT WORKOUT
+            ================================================== */}
+
+            <div className="border-b bg-muted/30 p-4">
+              {activeWorkout ? (
+                <>
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Current workout
+                  </div>
+
+                  <div className="font-semibold">
+                    {activeWorkout.title}
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    {formatUKDate(
+                      activeWorkout.startTime,
+                    )}
+                  </div>
+
+                  <div className="mt-2 rounded-md bg-background p-2 font-mono text-[10px] text-muted-foreground">
+                    Session ID: {currentSessionId}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No Hevy workout currently loaded.
+                </div>
+              )}
+            </div>
+
+            {/* ==================================================
+                API KEY
+            ================================================== */}
+
+            {showKeyInput && (
+              <div className="border-b p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <Key className="h-4 w-4" />
+                  Gemini API key
+                </div>
+
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) =>
+                    setApiKey(event.target.value)
+                  }
+                  placeholder="Paste your Gemini API key"
+                  className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+                />
+
                 <Button
+                  type="button"
                   size="sm"
-                  variant="outline"
-                  className="gap-1.5 h-7 border-rose-500/40 hover:bg-rose-500/20 text-rose-300"
-                  onClick={() => void send(lastFailedPrompt)}
+                  onClick={saveApiKey}
                 >
-                  <RefreshCw className="size-3.5" /> Retry
+                  Save key
                 </Button>
               </div>
             )}
-            <div ref={endRef} />
-          </div>
 
-          <div className="space-y-2 border-t border-border px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-surface-2/40">
-            <Button
-              variant="secondary"
-              className="w-full"
-              disabled={loading}
-              onClick={() =>
-                send("Please analyse my last Hevy workout against current block targets. Evaluate RPE for each exercise, provide promote/stick/deload calls, and build my next session plan.")
-              }
-            >
-              <Sparkles className="size-4" /> Analyse Workout & Progression
-            </Button>
-            <form
-              className="flex items-end gap-2 bg-surface-2 border border-border rounded-xl p-2 focus-within:border-primary transition-colors"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void send(input);
-              }}
-            >
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                value={input}
-                onChange={handleInputResize}
-                placeholder="Ask about a lift, swap, or current phase..."
-                className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-h-32 py-1.5 px-1 leading-relaxed"
-              />
-              <Button
-                type="submit"
-                size="icon"
-                className="size-10 shrink-0 mb-0.5"
-                disabled={loading || !input.trim()}
-              >
-                <Send className="size-4" />
-              </Button>
-            </form>
-          </div>
-        </SheetContent>
-      </Sheet>
+            {/* ==================================================
+                MESSAGES
+            ================================================== */}
 
-      <Dialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Gemini API Key</DialogTitle>
-            <DialogDescription>
-              Stored locally on your device. Get a free API key from Google AI Studio
-              (aistudio.google.com).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="gemini-key">API Key</Label>
-            <Input
-              id="gemini-key"
-              type="password"
-              placeholder="Paste AI Studio API key"
-              value={draftApiKey}
-              onChange={(e) => setDraftApiKey(e.target.value)}
-            />
+            <div className="max-h-[500px] overflow-y-auto p-4">
+              {messages.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  <Sparkles className="mx-auto mb-3 h-6 w-6" />
+
+                  <p className="font-medium">
+                    Coach Clive is ready.
+                  </p>
+
+                  <p className="mt-1">
+                    Ask about your training, progression or
+                    recovery.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((message: CoachMsg, index: number) => (
+                    <div
+                      key={
+                        message.id ??
+                        `${message.role}-${index}`
+                      }
+                      className={
+                        message.role === "user"
+                          ? "ml-auto max-w-[85%] rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground"
+                          : "mr-auto max-w-[90%] rounded-xl bg-muted px-4 py-3 text-sm"
+                      }
+                    >
+                      {message.content}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ==================================================
+                ACTIONS
+            ================================================== */}
+
+            <div className="border-t p-4">
+              <div className="mb-3 flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="flex-1"
+                  disabled={
+                    loading ||
+                    !activeWorkout ||
+                    !apiKey.trim()
+                  }
+                  onClick={() =>
+                    void sendMessage(
+                      "Analyse this workout in detail. Tell me what went well, what didn't, what has progressed, what has regressed, and what I should do next session.",
+                      true,
+                    )
+                  }
+                >
+                  {loading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+
+                  Analyse Workout
+                </Button>
+
+                {messages.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Clear coach conversation"
+                    disabled={loading}
+                    onClick={async () => {
+                      try {
+                        await clear.mutateAsync();
+                        toast.success(
+                          "Coach conversation cleared.",
+                        );
+                      } catch {
+                        toast.error(
+                          "Could not clear the conversation.",
+                        );
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {/* ==================================================
+                  INPUT
+              ================================================== */}
+
+              <div className="flex gap-2">
+                <textarea
+                  value={input}
+                  onChange={(event) =>
+                    setInput(event.target.value)
+                  }
+                  onKeyDown={handleKeyDown}
+                  disabled={loading}
+                  rows={2}
+                  placeholder="Ask Coach Clive..."
+                  className="min-h-[52px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+                />
+
+                <Button
+                  type="button"
+                  size="icon"
+                  disabled={
+                    loading ||
+                    !input.trim() ||
+                    !apiKey.trim()
+                  }
+                  onClick={() => void sendMessage()}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowKeyInput((value) => !value)
+                  }
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {apiKey
+                    ? "Change Gemini API key"
+                    : "Add Gemini API key"}
+                </button>
+
+                <span className="text-[10px] text-muted-foreground">
+                  Enter to send · Shift+Enter for newline
+                </span>
+              </div>
+            </div>
           </div>
-          <DialogFooter className="gap-2">
-            {apiKey && (
-              <Button variant="ghost" onClick={() => saveGeminiKey("")}>
-                Remove key
-              </Button>
-            )}
-            <Button onClick={() => saveGeminiKey(draftApiKey)}>Save key</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+      </div>
+    </div>
   );
 }
