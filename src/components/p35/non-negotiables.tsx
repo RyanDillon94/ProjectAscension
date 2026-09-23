@@ -513,7 +513,7 @@ export function NonNegotiables({
 
           <Dumbbell className="size-5 shrink-0 text-primary" />
 
-          <h2 className="text-base sm:text-lg font-bold truncate">
+          <h2 className="text-base sm:text-lg font-bold">
             Daily Non-Negotiables
           </h2>
 
@@ -542,10 +542,10 @@ export function NonNegotiables({
         {targetStats.map(s => (
           <div
             key={s.label}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface-2/60 p-3"
+            className="flex items-start gap-3 rounded-lg border border-border bg-surface-2/60 p-3"
           >
 
-            <s.icon className="size-4 shrink-0 text-primary" />
+            <s.icon className="size-4 shrink-0 text-primary mt-0.5" />
 
             <div className="min-w-0 flex-1">
 
@@ -553,7 +553,7 @@ export function NonNegotiables({
                 {s.label}
               </p>
 
-              <p className="truncate text-sm font-semibold">
+              <p className="text-sm font-semibold break-words">
                 {s.value}
               </p>
 
@@ -581,7 +581,7 @@ export function NonNegotiables({
           <ChevronLeft className="size-4" />
         </button>
 
-        <span className="text-xs font-semibold tracking-wide text-foreground truncate px-2">
+        <span className="text-xs font-semibold tracking-wide text-foreground px-2 text-center break-words">
           {dateHeading} ({selectedDay})
         </span>
 
@@ -635,7 +635,7 @@ export function NonNegotiables({
                 <div className="min-w-0 flex-1 pr-3">
 
                   <span
-                    className={`block text-sm font-medium leading-snug ${
+                    className={`block text-sm font-medium leading-snug break-words ${
                       isChecked
                         ? "text-primary font-semibold"
                         : "text-foreground"
@@ -645,7 +645,7 @@ export function NonNegotiables({
                   </span>
 
                   {habit.sublabel && (
-                    <span className="block text-[11px] text-muted-foreground">
+                    <span className="block text-[11px] text-muted-foreground break-words mt-0.5">
                       {habit.sublabel}
                     </span>
                   )}
@@ -681,7 +681,7 @@ export function NonNegotiables({
 
           <BookOpen className="size-3.5 text-primary" />
 
-          <span className="truncate">
+          <span>
             Daily Journal / Log ({selectedDay})
           </span>
 
