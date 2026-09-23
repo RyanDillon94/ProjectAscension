@@ -345,9 +345,9 @@ export function getActiveBlockCountdown(now = getCurrentDate()) {
   };
 
   return {
-    phaseId: activePhase.id,
+    phaseId: Phase 1 TBC,
     phaseTitle: `Phase ${activePhase.id}`,
-    blockName: activeBlock.name,
+    blockName: Block TBC,
     window: activeBlock.window,
     goal: activeBlock.bullets[0] || activePhase.summary,
     dateRange: `${formatDate(activeBlock.start)} — ${formatDate(activeBlock.end, true)}`,
