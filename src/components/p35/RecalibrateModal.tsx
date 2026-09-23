@@ -34,6 +34,7 @@ function FormattedMessage({ text }: { text: string }) {
           <div key={idx} className="space-y-1.5">
             {subItems.map((sub, sIdx) => {
               const isNumberedHeader = /^\*\*\d+\./.test(sub);
+
               const isBullet =
                 sub.startsWith("* ") ||
                 sub.startsWith("- ") ||
@@ -92,12 +93,74 @@ export function RecalibrateModal() {
   const [isTyping, setIsTyping] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  /*
+   * ============================================================
+   * KEYBOARD / VISUAL VIEWPORT HANDLING
+   * ============================================================
+   *
+   * Android's keyboard changes the Visual Viewport height.
+   * We use that value to resize the dialog while the keyboard
+   * is open so the input box remains above the keyboard.
+   */
+  const [viewportHeight, setViewportHeight] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
+    if (!isOpen) {
+      setViewportHeight(null);
+      return;
+    }
+
+    const viewport = window.visualViewport;
+
+    if (!viewport) {
+      return;
+    }
+
+    const updateViewport = () => {
+      setViewportHeight(viewport.height);
+    };
+
+    updateViewport();
+
+    viewport.addEventListener("resize", updateViewport);
+    viewport.addEventListener("scroll", updateViewport);
+
+    return () => {
+      viewport.removeEventListener("resize", updateViewport);
+      viewport.removeEventListener("scroll", updateViewport);
+    };
+  }, [isOpen]);
+
+  /*
+   * Keep the newest message visible.
+   */
+  useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop =
+            scrollRef.current.scrollHeight;
+        }
+      });
     }
   }, [messages, isTyping]);
+
+  /*
+   * When the input receives focus, make sure Android has
+   * scrolled the textbox into the visible viewport.
+   */
+  const handleInputFocus = () => {
+    setTimeout(() => {
+      inputRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 250);
+  };
 
   const getSystemPrompt = () => {
     const currentProfile =
@@ -135,6 +198,10 @@ CRITICAL RULES:
         },
       ]);
     }
+
+    if (!open) {
+      setViewportHeight(null);
+    }
   };
 
   const sendMessage = async (text: string) => {
@@ -149,7 +216,10 @@ CRITICAL RULES:
 
     const newMsgs = [
       ...messages,
-      { role: "user" as const, text },
+      {
+        role: "user" as const,
+        text,
+      },
     ];
 
     setMessages(newMsgs);
@@ -229,6 +299,7 @@ CRITICAL RULES:
           return;
         } catch (e) {
           console.error("Failed to parse AI JSON", e);
+
           toast.error(
             "AI generated invalid data. Tell it to try again.",
           );
@@ -244,6 +315,7 @@ CRITICAL RULES:
       ]);
     } catch (err) {
       console.error(err);
+
       toast.error(
         "Failed to connect to Coach. Check your API key.",
       );
@@ -251,6 +323,17 @@ CRITICAL RULES:
       setIsTyping(false);
     }
   };
+
+  /*
+   * Work out the dialog height.
+   *
+   * Normally it gets most of the screen.
+   * When Android's keyboard opens, visualViewport.height
+   * becomes much smaller, so the dialog shrinks with it.
+   */
+  const dialogHeight = viewportHeight
+    ? `${Math.max(viewportHeight - 16, 280)}px`
+    : "min(85dvh, 700px)";
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -266,11 +349,15 @@ CRITICAL RULES:
       </DialogTrigger>
 
       <DialogContent
+        style={{
+          height: dialogHeight,
+          maxHeight: viewportHeight
+            ? `${Math.max(viewportHeight - 16, 280)}px`
+            : "calc(100dvh - 2rem)",
+        }}
         className="
-          w-[calc(100vw-2rem)]
+          w-[calc(100vw-1rem)]
           max-w-lg
-          h-[min(85dvh,700px)]
-          max-h-[calc(100dvh-2rem)]
           flex
           flex-col
           overflow-hidden
@@ -279,8 +366,9 @@ CRITICAL RULES:
         "
       >
         {/* =====================================================
-            FIXED HEADER
+            HEADER
             ===================================================== */}
+
         <DialogHeader
           className="
             shrink-0
@@ -290,18 +378,22 @@ CRITICAL RULES:
             border-b
             border-border
             bg-background
-            z-10
+            z-20
           "
         >
           <DialogTitle className="flex items-center gap-2 text-primary">
             <Settings2 className="size-5 shrink-0" />
-            <span>AI Protocol Recalibration</span>
+
+            <span>
+              AI Protocol Recalibration
+            </span>
           </DialogTitle>
         </DialogHeader>
 
         {/* =====================================================
-            SCROLLING CHAT AREA
+            CHAT AREA
             ===================================================== */}
+
         <div
           ref={scrollRef}
           className="
@@ -363,6 +455,7 @@ CRITICAL RULES:
                 "
               >
                 <Loader2 className="size-4 animate-spin" />
+
                 Coach is analyzing...
               </div>
             </div>
@@ -370,8 +463,9 @@ CRITICAL RULES:
         </div>
 
         {/* =====================================================
-            FIXED INPUT AREA
+            INPUT AREA
             ===================================================== */}
+
         <div
           className="
             shrink-0
@@ -381,21 +475,26 @@ CRITICAL RULES:
             bg-background
             px-4
             pt-3
-            pb-[max(0.75rem,env(safe-area-inset-bottom))]
+            pb-3
+            z-20
           "
         >
           <div className="flex items-center gap-2">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onFocus={handleInputFocus}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+
                   sendMessage(input);
                 }
               }}
               placeholder="E.g., 'Fix my habits...'"
+              autoComplete="off"
               className="
                 flex-1
                 min-w-0
