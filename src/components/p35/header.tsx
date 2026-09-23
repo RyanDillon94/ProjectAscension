@@ -3,23 +3,24 @@ import { getActiveBlockCountdown, getAscensionProfile } from "@/lib/project35";
 import { Calendar, Flame, ShieldHalf, Target } from "lucide-react";
 
 export function DashboardHeader() {
-  const profile = getAscensionProfile();
+  const profile = getAscensionProfile() || {};
+  const countdown = getActiveBlockCountdown() || {};
 
   const {
-    phaseId,
-    blockName,
-    goal,
-    dateRange,
-    currentWeek,
-    totalWeeks,
-    daysLeft,
-    progress,
-  } = getActiveBlockCountdown();
+    phaseId = 1,
+    blockName = "Pending Setup",
+    goal = "Complete Onboarding",
+    dateRange = "N/A",
+    currentWeek = 0,
+    totalWeeks = 0,
+    daysLeft = 0,
+    progress = 0,
+  } = countdown;
 
   // "Same Man, Higher Standards" is locked as the core project identity.
   // The tagline becomes the dynamic italicized text below it.
-  const projectName = profile?.projectName || "Project Ascension";
-  const dynamicTagline = profile?.tagline || "Forging unbreakable mental grit and a vascular, combat-ready physique.";
+  const projectName = profile.projectName || "Project Ascension";
+  const dynamicTagline = profile.tagline || "Forging unbreakable mental grit and a vascular, combat-ready physique.";
 
   return (
     <header className="panel glow-ring relative overflow-hidden p-5 space-y-4">
