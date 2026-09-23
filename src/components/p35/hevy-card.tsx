@@ -9,7 +9,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Activity, ClipboardPaste, Save, Upload } from "lucide-react";
+import {
+  Activity,
+  ClipboardPaste,
+  Save,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export type HevyWorkout = {
@@ -29,7 +34,14 @@ export type HevyWorkout = {
   }[];
 };
 
-function isCardioExercise(exerciseTitle: string, sets: any[]): boolean {
+type HevyHistoryWorkout = HevyWorkout & {
+  date: string;
+};
+
+function isCardioExercise(
+  exerciseTitle: string,
+  sets: any[]
+): boolean {
   const title = exerciseTitle.toLowerCase();
 
   const cardioKeywords = [
@@ -47,7 +59,9 @@ function isCardioExercise(exerciseTitle: string, sets: any[]): boolean {
     "mat",
   ];
 
-  const matchesKeyword = cardioKeywords.some((k) => title.includes(k));
+  const matchesKeyword = cardioKeywords.some((k) =>
+    title.includes(k)
+  );
 
   const hasCardioMetrics = sets.some(
     (s) =>
@@ -73,7 +87,9 @@ function formatCardio(s: any): string {
     (s.km != null ? s.km * 1000 : null);
 
   const kmString =
-    meters != null ? `${(meters / 1000).toFixed(2)} km` : null;
+    meters != null
+      ? `${(meters / 1000).toFixed(2)} km`
+      : null;
 
   const totalSec =
     s.duration_seconds ??
@@ -92,6 +108,7 @@ function formatCardio(s: any): string {
       timeString = `${hrs}h ${mins}min`;
     } else if (mins > 0) {
       timeString = `${mins}min`;
+
       if (secs > 0) {
         timeString += ` ${secs}s`;
       }
@@ -104,7 +121,9 @@ function formatCardio(s: any): string {
 
   const parts = [timeString, kmString].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(" • ") : "Completed";
+  return parts.length > 0
+    ? parts.join(" • ")
+    : "Completed";
 }
 
 function formatWeight(
@@ -119,7 +138,6 @@ function formatWeight(
     titleLower.includes("pushdown") ||
     titleLower.includes("fly");
 
-  // If the source explicitly gave us lbs, keep it as lbs.
   if (weightLbs != null) {
     const roundedLbs = Number.isInteger(weightLbs)
       ? weightLbs
@@ -132,11 +150,10 @@ function formatWeight(
     return "BW";
   }
 
-  // This preserves your existing behaviour for exercises where you
-  // specifically want kg converted/displayed as lbs.
   if (isCableOrLbs) {
     const convertedLbs = weightKg * 2.20462;
-    const roundedLbs = Math.round(convertedLbs * 2) / 2;
+    const roundedLbs =
+      Math.round(convertedLbs * 2) / 2;
 
     return `${roundedLbs}lbs`;
   }
@@ -176,7 +193,15 @@ function formatHevyDate(rawDate: string): string {
     return rawDate.trim();
   }
 
-  const [, monthName, dayStr, yearStr, hourStr, minuteStr, ampm] = match;
+  const [
+    ,
+    monthName,
+    dayStr,
+    yearStr,
+    hourStr,
+    minuteStr,
+    ampm,
+  ] = match;
 
   const months: Record<string, number> = {
     jan: 0,
@@ -233,41 +258,220 @@ function formatHevyDate(rawDate: string): string {
   }
 
   const day = String(date.getDate()).padStart(2, "0");
-  const monthFormatted = String(date.getMonth() + 1).padStart(2, "0");
+  const monthFormatted = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
   const year = date.getFullYear();
 
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(
+    2,
+    "0"
+  );
+  const minutes = String(date.getMinutes()).padStart(
+    2,
+    "0"
+  );
 
   return `${day}/${monthFormatted}/${year} ${hours}:${minutes}`;
 }
 
-function parseManualWorkout(raw: string): HevyWorkout {
+/**
+ * Converts a Hevy date into a real ISO timestamp where
+ * possible.
+ *
+ * Supports:
+ *
+ * Monday, Sep 21, 2026 at 12:50pm
+ *
+ * ISO dates
+ *
+ * and the already-formatted:
+ *
+ * 21/09/2026 12:50
+ */
+function parseWorkoutDate(
+  rawDate: string
+): Date | null {
+  if (!rawDate) {
+    return null;
+  }
+
+  const value = rawDate.trim();
+
+  // ----------------------------------------------------------
+  // ISO / normal JavaScript date
+  // ----------------------------------------------------------
+
+  const directDate = new Date(value);
+
+  if (!isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  // ----------------------------------------------------------
+  // Hevy format:
+  //
+  // Monday, Sep 21, 2026 at 12:50pm
+  // ----------------------------------------------------------
+
+  const cleaned = value
+    .replace(/^Monday,\s*/i, "")
+    .replace(/^Tuesday,\s*/i, "")
+    .replace(/^Wednesday,\s*/i, "")
+    .replace(/^Thursday,\s*/i, "")
+    .replace(/^Friday,\s*/i, "")
+    .replace(/^Saturday,\s*/i, "")
+    .replace(/^Sunday,\s*/i, "");
+
+  const hevyMatch = cleaned.match(
+    /^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*(am|pm)$/i
+  );
+
+  if (hevyMatch) {
+    const [
+      ,
+      monthName,
+      dayStr,
+      yearStr,
+      hourStr,
+      minuteStr,
+      ampm,
+    ] = hevyMatch;
+
+    const months: Record<string, number> = {
+      jan: 0,
+      january: 0,
+      feb: 1,
+      february: 1,
+      mar: 2,
+      march: 2,
+      apr: 3,
+      april: 3,
+      may: 4,
+      jun: 5,
+      june: 5,
+      jul: 6,
+      july: 6,
+      aug: 7,
+      august: 7,
+      sep: 8,
+      september: 8,
+      oct: 9,
+      october: 9,
+      nov: 10,
+      november: 10,
+      dec: 11,
+      december: 11,
+    };
+
+    const month =
+      months[monthName.toLowerCase()];
+
+    if (month != null) {
+      let hour = parseInt(hourStr, 10);
+
+      if (
+        ampm.toLowerCase() === "pm" &&
+        hour !== 12
+      ) {
+        hour += 12;
+      }
+
+      if (
+        ampm.toLowerCase() === "am" &&
+        hour === 12
+      ) {
+        hour = 0;
+      }
+
+      const date = new Date(
+        Number(yearStr),
+        month,
+        Number(dayStr),
+        hour,
+        Number(minuteStr)
+      );
+
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+  }
+
+  // ----------------------------------------------------------
+  // UK display format:
+  //
+  // 21/09/2026 12:50
+  // ----------------------------------------------------------
+
+  const ukMatch = value.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/
+  );
+
+  if (ukMatch) {
+    const [
+      ,
+      dayStr,
+      monthStr,
+      yearStr,
+      hourStr = "0",
+      minuteStr = "0",
+    ] = ukMatch;
+
+    const date = new Date(
+      Number(yearStr),
+      Number(monthStr) - 1,
+      Number(dayStr),
+      Number(hourStr),
+      Number(minuteStr)
+    );
+
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns a stable ISO timestamp for a workout.
+ */
+function normaliseWorkoutStartTime(
+  rawDate: string
+): string {
+  const parsed = parseWorkoutDate(rawDate);
+
+  if (parsed) {
+    return parsed.toISOString();
+  }
+
+  return rawDate.trim() || new Date().toISOString();
+}
+
+function parseManualWorkout(
+  raw: string
+): HevyWorkout {
   const lines = raw.split(/\r?\n/);
 
   if (lines.length === 0) {
     throw new Error("No text provided.");
   }
 
-  // ============================================================
-  // HEVY HEADER
-  //
-  // Hevy normally gives us:
-  //
-  // Monday
-  // Monday, Sep 21, 2026 at 12:50pm
-  //
-  // Bench Press (Barbell)
-  // ============================================================
-
   const firstLine = lines[0].trim();
 
-  let title = firstLine || "Manual Session Log";
+  let title =
+    firstLine || "Manual Session Log";
+
   let startTime = new Date().toISOString();
 
   let dateLineIndex = -1;
 
-  for (let i = 0; i < Math.min(lines.length, 4); i++) {
+  for (
+    let i = 0;
+    i < Math.min(lines.length, 4);
+    i++
+  ) {
     const l = lines[i].trim();
 
     if (
@@ -275,20 +479,18 @@ function parseManualWorkout(raw: string): HevyWorkout {
         l
       )
     ) {
-      startTime = formatHevyDate(l);
+      startTime = normaliseWorkoutStartTime(l);
       dateLineIndex = i;
       break;
     }
   }
 
-  // If the first line is simply "Monday", don't use that as the
-  // workout title. Give the session a useful title instead.
   if (
     /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(
       firstLine
     )
   ) {
-    if (startTime && !startTime.includes("T")) {
+    if (dateLineIndex >= 0) {
       title = `${firstLine} Session`;
     } else {
       title = "Workout";
@@ -296,16 +498,26 @@ function parseManualWorkout(raw: string): HevyWorkout {
   }
 
   const exercises: any[] = [];
+
   let currentEx: any = null;
   let noteBuffer: string[] = [];
 
   const flushNotes = () => {
-    if (noteBuffer.length > 0 && currentEx) {
-      let noteStr = noteBuffer.join("\n").trim();
+    if (
+      noteBuffer.length > 0 &&
+      currentEx
+    ) {
+      let noteStr = noteBuffer
+        .join("\n")
+        .trim();
 
-      // Remove wrapping quotation marks from Hevy notes.
-      if (noteStr.startsWith('"') && noteStr.endsWith('"')) {
-        noteStr = noteStr.slice(1, -1).trim();
+      if (
+        noteStr.startsWith('"') &&
+        noteStr.endsWith('"')
+      ) {
+        noteStr = noteStr
+          .slice(1, -1)
+          .trim();
       }
 
       if (noteStr.length > 0) {
@@ -315,10 +527,6 @@ function parseManualWorkout(raw: string): HevyWorkout {
 
     noteBuffer = [];
   };
-
-  // ============================================================
-  // MAIN HEVY PARSER
-  // ============================================================
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -331,7 +539,6 @@ function parseManualWorkout(raw: string): HevyWorkout {
       continue;
     }
 
-    // Ignore Hevy footer/link.
     if (line.startsWith("@hevyapp")) {
       continue;
     }
@@ -340,7 +547,6 @@ function parseManualWorkout(raw: string): HevyWorkout {
       continue;
     }
 
-    // Ignore the Hevy date line.
     if (
       /\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*(?:am|pm)\b/i.test(
         line
@@ -349,7 +555,6 @@ function parseManualWorkout(raw: string): HevyWorkout {
       continue;
     }
 
-    // Ignore a standalone weekday line.
     if (
       [
         "monday",
@@ -365,38 +570,14 @@ function parseManualWorkout(raw: string): HevyWorkout {
       continue;
     }
 
-    // ==========================================================
-    // NORMAL WEIGHTED SET
-    //
-    // Supports:
-    //
-    // Set 1: 60 kg x 10
-    // Set 2: 67.5 kg x 10
-    // Set 4: 67.5 kg x 10 @ 9 rpe
-    // 67.5kg x 10 @ RPE 9
-    // 52.5 lbs x 14 @ 8.5 rpe
-    // BW x 10
-    // ==========================================================
-
     const setMatch = line.match(
       /(?:Set\s*\d+[:\-]?\s*)?(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*(kg|lbs)?|BW)\s*[xX×]\s*(\d+)(?:\s*@\s*(?:RPE\s*)?(\d+(?:\.\d+)?)\s*(?:RPE)?\s*)?/i
     );
 
-    // ==========================================================
-    // CARDIO
-    //
-    // Supports:
-    //
-    // 1.5 km - 18min 0s
-    // 1.5 km
-    // 18min
-    // 18 mins
-    // 30s
-    // ==========================================================
-
-    const cardioMatch = /(\d+(?:\.\d+)?)\s*(km|mi|mins?|secs?|hours?|hr|m|s)\b/i.test(
-      line
-    );
+    const cardioMatch =
+      /(\d+(?:\.\d+)?)\s*(km|mi|mins?|secs?|hours?|hr|m|s)\b/i.test(
+        line
+      );
 
     const isSetLine =
       setMatch !== null ||
@@ -419,12 +600,14 @@ function parseManualWorkout(raw: string): HevyWorkout {
         exercises.push(currentEx);
       }
 
-      // ========================================================
-      // WEIGHTED SET
-      // ========================================================
-
       if (setMatch) {
-        const [, wStr, unit, repsStr, rpeStr] = setMatch;
+        const [
+          ,
+          wStr,
+          unit,
+          repsStr,
+          rpeStr,
+        ] = setMatch;
 
         const setObj: any = {
           reps: parseInt(repsStr, 10),
@@ -433,7 +616,10 @@ function parseManualWorkout(raw: string): HevyWorkout {
         if (wStr) {
           const weight = parseFloat(wStr);
 
-          if (unit && unit.toLowerCase() === "lbs") {
+          if (
+            unit &&
+            unit.toLowerCase() === "lbs"
+          ) {
             setObj.weightLbs = weight;
           } else {
             setObj.weightKg = weight;
@@ -446,10 +632,6 @@ function parseManualWorkout(raw: string): HevyWorkout {
 
         currentEx.sets.push(setObj);
       } else {
-        // ======================================================
-        // CARDIO SET
-        // ======================================================
-
         const setObj: any = {};
 
         const kmMatch = line.match(
@@ -469,8 +651,12 @@ function parseManualWorkout(raw: string): HevyWorkout {
         );
 
         if (kmMatch) {
-          const value = parseFloat(kmMatch[1]);
-          const unit = kmMatch[2].toLowerCase();
+          const value = parseFloat(
+            kmMatch[1]
+          );
+
+          const unit =
+            kmMatch[2].toLowerCase();
 
           setObj.distance_meters =
             unit === "mi"
@@ -481,50 +667,39 @@ function parseManualWorkout(raw: string): HevyWorkout {
         let totalSeconds = 0;
 
         if (hourMatch) {
-          totalSeconds += parseFloat(hourMatch[1]) * 3600;
+          totalSeconds +=
+            parseFloat(hourMatch[1]) * 3600;
         }
 
         if (minMatch) {
-          totalSeconds += parseFloat(minMatch[1]) * 60;
+          totalSeconds +=
+            parseFloat(minMatch[1]) * 60;
         }
 
         if (secMatch) {
-          totalSeconds += parseFloat(secMatch[1]);
+          totalSeconds += parseFloat(
+            secMatch[1]
+          );
         }
 
         if (totalSeconds > 0) {
-          setObj.duration_seconds = totalSeconds;
+          setObj.duration_seconds =
+            totalSeconds;
         }
 
         currentEx.sets.push(setObj);
       }
-    }
-
-    // ==========================================================
-    // NOTES
-    //
-    // Hevy puts notes in quotation marks.
-    //
-    // "This was hard!"
-    //
-    // We also support multi-line notes.
-    // ==========================================================
-
-    else if (
+    } else if (
       line.startsWith('"') ||
       line.endsWith('"') ||
       (currentEx &&
         currentEx.sets.length === 0 &&
-        !/\d+\s*(kg|lbs|km|min|sec)/i.test(line))
+        !/\d+\s*(kg|lbs|km|min|sec)/i.test(
+          line
+        ))
     ) {
       noteBuffer.push(line);
-    }
-
-    // ==========================================================
-    // NEW EXERCISE
-    // ==========================================================
-
-    else {
+    } else {
       flushNotes();
 
       const exerciseTitle = line
@@ -542,28 +717,25 @@ function parseManualWorkout(raw: string): HevyWorkout {
 
   flushNotes();
 
-  // ============================================================
-  // REMOVE EMPTY EXERCISES
-  // ============================================================
-
-  const validExercises = exercises.filter(
-    (ex) =>
-      ex.sets.length > 0 ||
-      (ex.notes && ex.notes.length > 0)
-  );
-
-  // ============================================================
-  // FALLBACK
-  // ============================================================
+  const validExercises =
+    exercises.filter(
+      (ex) =>
+        ex.sets.length > 0 ||
+        (ex.notes &&
+          ex.notes.length > 0)
+    );
 
   if (validExercises.length === 0) {
     return {
-      title: title || "Manual Session Log",
+      title:
+        title || "Manual Session Log",
       startTime,
       exercises: [
         {
           title: "Session Details",
-          notes: lines.slice(1).join("\n"),
+          notes: lines
+            .slice(1)
+            .join("\n"),
           sets: [
             {
               duration_seconds: 0,
@@ -590,15 +762,20 @@ export function HevyCard({
   workout: HevyWorkout | null;
   apiKey?: string;
   onSaveKey?: (key: string) => Promise<void>;
-  onWorkout?: (workout: HevyWorkout) => Promise<void>;
+  onWorkout?: (
+    workout: HevyWorkout
+  ) => Promise<void>;
 }) {
   const [currentWorkout, setCurrentWorkout] =
     useState<HevyWorkout | null>(() => {
-      if (typeof window !== "undefined") {
+      if (
+        typeof window !== "undefined"
+      ) {
         try {
-          const cached = localStorage.getItem(
-            "p35_cached_workout"
-          );
+          const cached =
+            localStorage.getItem(
+              "p35_cached_workout"
+            );
 
           return cached
             ? JSON.parse(cached)
@@ -611,257 +788,718 @@ export function HevyCard({
       return initialWorkout;
     });
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [manualText, setManualText] = useState("");
+  const [dialogOpen, setDialogOpen] =
+    useState(false);
+
+  const [manualText, setManualText] =
+    useState("");
 
   const fileInputRef =
     useRef<HTMLInputElement>(null);
 
+  // ============================================================
+  // KEEP CARD IN SYNC WITH PARENT WORKOUT
+  // ============================================================
+
+  useEffect(() => {
+    if (initialWorkout) {
+      setCurrentWorkout(initialWorkout);
+    }
+  }, [initialWorkout]);
+
+  // ============================================================
+  // MANUAL WORKOUT
+  // ============================================================
+
   const handleParseAndSave = () => {
     if (!manualText.trim()) {
-      toast.error("Paste your workout text first.");
+      toast.error(
+        "Paste your workout text first."
+      );
+
       return;
     }
 
     try {
       const parsedWorkout =
-        parseManualWorkout(manualText);
+        parseManualWorkout(
+          manualText
+        );
 
-      setCurrentWorkout(parsedWorkout);
+      setCurrentWorkout(
+        parsedWorkout
+      );
 
-      if (typeof window !== "undefined") {
+      if (
+        typeof window !==
+        "undefined"
+      ) {
         localStorage.setItem(
           "p35_cached_workout",
-          JSON.stringify(parsedWorkout)
+          JSON.stringify(
+            parsedWorkout
+          )
+        );
+
+        // IMPORTANT:
+        // Tell Coach Clive immediately that a
+        // new workout has been loaded.
+        window.dispatchEvent(
+          new CustomEvent(
+            "p35:workout-updated",
+            {
+              detail:
+                parsedWorkout,
+            }
+          )
         );
       }
 
       if (onWorkout) {
-        onWorkout(parsedWorkout).catch(() => {});
+        onWorkout(
+          parsedWorkout
+        ).catch(() => {});
       }
 
       setManualText("");
       setDialogOpen(false);
 
-      toast.success("Workout parsed and locked in.");
+      toast.success(
+        "Workout parsed and locked in."
+      );
     } catch (err) {
+      console.error(
+        "Manual workout parse error:",
+        err
+      );
+
       toast.error(
         "Failed to parse workout format."
       );
     }
   };
 
+  // ============================================================
+  // CSV IMPORT
+  // ============================================================
+
   const handleCSVUpload = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const file = e.target.files?.[0];
+    const file =
+      e.target.files?.[0];
 
     if (!file) return;
 
-    const reader = new FileReader();
+    const reader =
+      new FileReader();
 
     reader.onload = (evt) => {
-      const text = evt.target?.result as string;
+      try {
+        const text =
+          evt.target?.result as string;
 
-      const arr: string[][] = [];
+        if (!text) {
+          toast.error(
+            "CSV file was empty."
+          );
 
-      let quote = false;
-      let row: string[] = [];
-      let col = "";
+          return;
+        }
 
-      for (let c = 0; c < text.length; c++) {
-        const cc = text[c];
-        const nc = text[c + 1];
+        // ======================================================
+        // CSV PARSER
+        // ======================================================
+
+        const arr: string[][] = [];
+
+        let quote = false;
+        let row: string[] = [];
+        let col = "";
+
+        for (
+          let c = 0;
+          c < text.length;
+          c++
+        ) {
+          const cc = text[c];
+          const nc = text[c + 1];
+
+          if (
+            cc === '"' &&
+            quote &&
+            nc === '"'
+          ) {
+            col += cc;
+            c++;
+            continue;
+          }
+
+          if (cc === '"') {
+            quote = !quote;
+            continue;
+          }
+
+          if (
+            cc === "," &&
+            !quote
+          ) {
+            row.push(col);
+            col = "";
+            continue;
+          }
+
+          if (
+            cc === "\n" &&
+            !quote
+          ) {
+            row.push(col);
+            arr.push(row);
+            row = [];
+            col = "";
+            continue;
+          }
+
+          if (
+            cc === "\r" &&
+            !quote
+          ) {
+            continue;
+          }
+
+          col += cc;
+        }
+
+        if (col || row.length > 0) {
+          row.push(col);
+        }
+
+        if (row.length > 0) {
+          arr.push(row);
+        }
+
+        if (arr.length < 2) {
+          toast.error(
+            "Invalid CSV format."
+          );
+
+          return;
+        }
+
+        // ======================================================
+        // HEADERS
+        // ======================================================
+
+        const headers =
+          arr[0].map((h) =>
+            h.trim().toLowerCase()
+          );
+
+        const findHeader = (
+          ...names: string[]
+        ) => {
+          for (const name of names) {
+            const index =
+              headers.indexOf(name);
+
+            if (index >= 0) {
+              return index;
+            }
+          }
+
+          return -1;
+        };
+
+        const iStart =
+          findHeader(
+            "start_time",
+            "start time",
+            "date"
+          );
+
+        const iTitle =
+          findHeader(
+            "title",
+            "workout_title",
+            "workout title"
+          );
+
+        const iExTitle =
+          findHeader(
+            "exercise_title",
+            "exercise title",
+            "exercise"
+          );
+
+        const iWeightKg =
+          findHeader(
+            "weight_kg",
+            "weight kg"
+          );
+
+        const iWeightLbs =
+          findHeader(
+            "weight_lbs",
+            "weight lbs"
+          );
+
+        const iReps =
+          findHeader(
+            "reps",
+            "repetitions"
+          );
+
+        const iRpe =
+          findHeader(
+            "rpe"
+          );
+
+        const iDistance =
+          findHeader(
+            "distance_meters",
+            "distance meters",
+            "distance"
+          );
+
+        const iDuration =
+          findHeader(
+            "duration_seconds",
+            "duration seconds",
+            "duration"
+          );
 
         if (
-          cc === '"' &&
-          quote &&
-          nc === '"'
+          iStart === -1 ||
+          iExTitle === -1
         ) {
-          col += cc;
-          c++;
-          continue;
+          toast.error(
+            "Missing required columns. Are you sure this is a Hevy export?"
+          );
+
+          return;
         }
 
-        if (cc === '"') {
-          quote = !quote;
-          continue;
+        // ======================================================
+        // WORKOUT MAP
+        // ======================================================
+
+        const workoutsMap: Record<
+          string,
+          HevyHistoryWorkout
+        > = {};
+
+        // ======================================================
+        // PROCESS CSV ROWS
+        // ======================================================
+
+        for (
+          let i = 1;
+          i < arr.length;
+          i++
+        ) {
+          const r = arr[i];
+
+          if (
+            r.length === 0
+          ) {
+            continue;
+          }
+
+          const startTimeRaw =
+            r[iStart]?.trim();
+
+          const title =
+            iTitle >= 0 &&
+            r[iTitle]?.trim()
+              ? r[iTitle].trim()
+              : "Workout";
+
+          const exTitle =
+            r[iExTitle]?.trim();
+
+          if (
+            !startTimeRaw ||
+            !exTitle
+          ) {
+            continue;
+          }
+
+          // ====================================================
+          // NORMALISE DATE
+          // ====================================================
+
+          const parsedDate =
+            parseWorkoutDate(
+              startTimeRaw
+            );
+
+          if (!parsedDate) {
+            console.warn(
+              "Could not parse Hevy workout date:",
+              startTimeRaw
+            );
+
+            continue;
+          }
+
+          const isoStartTime =
+            parsedDate.toISOString();
+
+          const isoDate =
+            isoStartTime.slice(
+              0,
+              10
+            );
+
+          /*
+           * Include the actual timestamp in the key.
+           *
+           * This prevents two workouts on the same day with
+           * the same title from accidentally becoming one session.
+           */
+          const wKey =
+            `${isoStartTime}_${title}`;
+
+          if (!workoutsMap[wKey]) {
+            workoutsMap[wKey] = {
+              date: isoDate,
+              startTime:
+                isoStartTime,
+              title,
+              exercises: [],
+            };
+          }
+
+          // ====================================================
+          // FIND / CREATE EXERCISE
+          // ====================================================
+
+          let exObj =
+            workoutsMap[
+              wKey
+            ].exercises.find(
+              (e) =>
+                e.title ===
+                exTitle
+            );
+
+          if (!exObj) {
+            exObj = {
+              title: exTitle,
+              sets: [],
+            };
+
+            workoutsMap[
+              wKey
+            ].exercises.push(
+              exObj
+            );
+          }
+
+          // ====================================================
+          // PARSE SET
+          //
+          // IMPORTANT:
+          // We no longer require BOTH weight and reps.
+          //
+          // Bodyweight/cardio/duration/RPE sets are retained.
+          // ====================================================
+
+          const rawWeightKg =
+            iWeightKg >= 0
+              ? r[iWeightKg]
+              : "";
+
+          const rawWeightLbs =
+            iWeightLbs >= 0
+              ? r[iWeightLbs]
+              : "";
+
+          const rawReps =
+            iReps >= 0
+              ? r[iReps]
+              : "";
+
+          const rawRpe =
+            iRpe >= 0
+              ? r[iRpe]
+              : "";
+
+          const rawDistance =
+            iDistance >= 0
+              ? r[iDistance]
+              : "";
+
+          const rawDuration =
+            iDuration >= 0
+              ? r[iDuration]
+              : "";
+
+          const weightKg =
+            rawWeightKg !== ""
+              ? parseFloat(
+                  rawWeightKg
+                )
+              : NaN;
+
+          const weightLbs =
+            rawWeightLbs !== ""
+              ? parseFloat(
+                  rawWeightLbs
+                )
+              : NaN;
+
+          const reps =
+            rawReps !== ""
+              ? parseInt(
+                  rawReps,
+                  10
+                )
+              : NaN;
+
+          const rpe =
+            rawRpe !== ""
+              ? parseFloat(
+                  rawRpe
+                )
+              : NaN;
+
+          const distance =
+            rawDistance !== ""
+              ? parseFloat(
+                  rawDistance
+                )
+              : NaN;
+
+          const duration =
+            rawDuration !== ""
+              ? parseFloat(
+                  rawDuration
+                )
+              : NaN;
+
+          const hasWeightKg =
+            !isNaN(weightKg);
+
+          const hasWeightLbs =
+            !isNaN(weightLbs);
+
+          const hasReps =
+            !isNaN(reps);
+
+          const hasRpe =
+            !isNaN(rpe);
+
+          const hasDistance =
+            !isNaN(distance);
+
+          const hasDuration =
+            !isNaN(duration);
+
+          /*
+           * Only discard the row if it contains absolutely
+           * no useful workout information.
+           */
+          if (
+            !hasWeightKg &&
+            !hasWeightLbs &&
+            !hasReps &&
+            !hasRpe &&
+            !hasDistance &&
+            !hasDuration
+          ) {
+            /*
+             * Still create a placeholder set for a genuine
+             * exercise row if the exercise itself exists.
+             *
+             * This is particularly useful for bodyweight
+             * exercises where Hevy may leave weight blank.
+             */
+            exObj.sets.push({});
+            continue;
+          }
+
+          const parsedSet: {
+            weightKg?: number;
+            weightLbs?: number;
+            reps?: number;
+            rpe?: number;
+            distance_meters?: number;
+            duration_seconds?: number;
+          } = {};
+
+          if (hasWeightKg) {
+            parsedSet.weightKg =
+              weightKg;
+          }
+
+          if (hasWeightLbs) {
+            parsedSet.weightLbs =
+              weightLbs;
+          }
+
+          if (hasReps) {
+            parsedSet.reps =
+              reps;
+          }
+
+          if (hasRpe) {
+            parsedSet.rpe =
+              rpe;
+          }
+
+          if (hasDistance) {
+            parsedSet.distance_meters =
+              distance;
+          }
+
+          if (hasDuration) {
+            parsedSet.duration_seconds =
+              duration;
+          }
+
+          exObj.sets.push(
+            parsedSet
+          );
         }
 
-        if (cc === "," && !quote) {
-          row.push(col);
-          col = "";
-          continue;
+        // ======================================================
+        // BUILD HISTORY
+        // ======================================================
+
+        const history =
+          Object.values(
+            workoutsMap
+          ).filter(
+            (workout) =>
+              workout.exercises.some(
+                (exercise) =>
+                  exercise.sets.length >
+                  0
+              )
+          );
+
+        if (
+          history.length === 0
+        ) {
+          toast.error(
+            "No valid workouts could be found in the CSV."
+          );
+
+          return;
         }
 
-        if (cc === "\n" && !quote) {
-          row.push(col);
-          arr.push(row);
-          row = [];
-          col = "";
-          continue;
-        }
+        // ======================================================
+        // SORT NEWEST FIRST
+        // ======================================================
 
-        if (cc === "\r" && !quote) {
-          continue;
-        }
+        history.sort(
+          (a, b) => {
+            const aTime =
+              parseWorkoutDate(
+                a.startTime
+              )?.getTime() ?? 0;
 
-        col += cc;
-      }
+            const bTime =
+              parseWorkoutDate(
+                b.startTime
+              )?.getTime() ?? 0;
 
-      if (col) {
-        row.push(col);
-      }
-
-      if (row.length) {
-        arr.push(row);
-      }
-
-      if (arr.length < 2) {
-        toast.error("Invalid CSV format.");
-        return;
-      }
-
-      const headers = arr[0].map((h) =>
-        h.trim().toLowerCase()
-      );
-
-      const iStart =
-        headers.indexOf("start_time");
-
-      const iTitle =
-        headers.indexOf("title");
-
-      const iExTitle =
-        headers.indexOf("exercise_title");
-
-      const iWeight =
-        headers.indexOf("weight_kg");
-
-      const iReps =
-        headers.indexOf("reps");
-
-      if (
-        iStart === -1 ||
-        iExTitle === -1
-      ) {
-        toast.error(
-          "Missing required columns. Are you sure this is a Hevy export?"
+            return (
+              bTime - aTime
+            );
+          }
         );
 
-        return;
-      }
+        // ======================================================
+        // SAVE COMPLETE HEVY HISTORY
+        // ======================================================
 
-      const workoutsMap: Record<
-        string,
-        any
-      > = {};
-
-      for (let i = 1; i < arr.length; i++) {
-        const r = arr[i];
-
-        if (r.length < headers.length) {
-          continue;
-        }
-
-        const startTimeStr = r[iStart];
-
-        const title =
-          iTitle >= 0
-            ? r[iTitle]
-            : "Workout";
-
-        const exTitle = r[iExTitle];
-
-        const weight =
-          iWeight >= 0
-            ? parseFloat(r[iWeight])
-            : NaN;
-
-        const reps =
-          iReps >= 0
-            ? parseInt(r[iReps], 10)
-            : NaN;
-
-        if (
-          !startTimeStr ||
-          !exTitle ||
-          isNaN(weight) ||
-          isNaN(reps)
-        ) {
-          continue;
-        }
-
-        const datePart =
-          startTimeStr
-            .split(",")[0]
-            .trim();
-
-        const dObj = new Date(datePart);
-
-        if (isNaN(dObj.getTime())) {
-          continue;
-        }
-
-        const isoDate = new Date(
-          dObj.getTime() -
-            dObj.getTimezoneOffset() * 60000
-        )
-          .toISOString()
-          .slice(0, 10);
-
-        const wKey = `${isoDate}_${title}`;
-
-        if (!workoutsMap[wKey]) {
-          workoutsMap[wKey] = {
-            date: isoDate,
-            title,
-            exercises: [],
-          };
-        }
-
-        let exObj =
-          workoutsMap[wKey].exercises.find(
-            (e: any) =>
-              e.title === exTitle
-          );
-
-        if (!exObj) {
-          exObj = {
-            title: exTitle,
-            sets: [],
-          };
-
-          workoutsMap[wKey].exercises.push(
-            exObj
-          );
-        }
-
-        exObj.sets.push({
-          weightKg: weight,
-          reps,
-        });
-      }
-
-      const history =
-        Object.values(workoutsMap);
-
-      try {
         localStorage.setItem(
           "p35_hevy_workouts",
-          JSON.stringify(history)
+          JSON.stringify(
+            history
+          )
         );
+
+        // ======================================================
+        // MAKE NEWEST WORKOUT THE ACTIVE WORKOUT
+        // ======================================================
+
+        const newest =
+          history[0];
+
+        const latestWorkout: HevyWorkout =
+          {
+            title:
+              newest.title ||
+              "Hevy Workout",
+
+            startTime:
+              newest.startTime ||
+              new Date().toISOString(),
+
+            exercises:
+              newest.exercises ??
+              [],
+          };
+
+        // Save the active workout separately.
+        localStorage.setItem(
+          "p35_cached_workout",
+          JSON.stringify(
+            latestWorkout
+          )
+        );
+
+        // Update this card immediately.
+        setCurrentWorkout(
+          latestWorkout
+        );
+
+        // Tell Coach Clive immediately.
+        window.dispatchEvent(
+          new CustomEvent(
+            "p35:workout-updated",
+            {
+              detail:
+                latestWorkout,
+            }
+          )
+        );
+
+        // Keep parent state in sync too.
+        if (onWorkout) {
+          onWorkout(
+            latestWorkout
+          ).catch((error) => {
+            console.error(
+              "Failed to sync imported workout:",
+              error
+            );
+          });
+        }
+
+        // Reset the file input so the same CSV can
+        // be selected again if needed.
+        if (
+          fileInputRef.current
+        ) {
+          fileInputRef.current.value =
+            "";
+        }
 
         toast.success(
-          `Imported ${history.length} historical workouts!`
+          `Imported ${history.length} historical workouts. Latest session: ${latestWorkout.title}`
+        );
+      } catch (error) {
+        console.error(
+          "Hevy CSV import error:",
+          error
         );
 
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
-      } catch (err) {
         toast.error(
-          "History is too large for local storage constraints."
+          "Something went wrong while importing the Hevy CSV."
         );
       }
     };
@@ -870,7 +1508,8 @@ export function HevyCard({
   };
 
   const displayWorkout =
-    currentWorkout || initialWorkout;
+    currentWorkout ||
+    initialWorkout;
 
   return (
     <section className="panel p-5 w-full overflow-hidden">
@@ -885,7 +1524,9 @@ export function HevyCard({
 
         <Dialog
           open={dialogOpen}
-          onOpenChange={setDialogOpen}
+          onOpenChange={
+            setDialogOpen
+          }
         >
           <DialogTrigger asChild>
             <Button
@@ -915,7 +1556,9 @@ export function HevyCard({
                 rows={8}
                 value={manualText}
                 onChange={(e) =>
-                  setManualText(e.target.value)
+                  setManualText(
+                    e.target.value
+                  )
                 }
                 placeholder={`e.g.
 Monday
@@ -932,7 +1575,9 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
 
             <DialogFooter>
               <Button
-                onClick={handleParseAndSave}
+                onClick={
+                  handleParseAndSave
+                }
                 className="w-full gap-2"
               >
                 <Save className="size-4" />
@@ -961,7 +1606,9 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
             {displayWorkout.exercises.map(
               (ex, i) => {
                 const lastSet =
-                  ex.sets[ex.sets.length - 1];
+                  ex.sets[
+                    ex.sets.length - 1
+                  ];
 
                 const isCardio =
                   isCardioExercise(
@@ -980,7 +1627,8 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                       </p>
 
                       <span className="stat-label shrink-0">
-                        {ex.sets.length > 0 &&
+                        {ex.sets.length >
+                          0 &&
                         ex.sets[0]
                           .duration_seconds ===
                           0
@@ -1025,7 +1673,10 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                     ) : (
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground pt-0.5">
                         {ex.sets.map(
-                          (s, sIdx) => {
+                          (
+                            s,
+                            sIdx
+                          ) => {
                             const weightDisplay =
                               formatWeight(
                                 s.weightKg,
@@ -1038,7 +1689,8 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                                 key={sIdx}
                                 className="flex items-center gap-2"
                               >
-                                {sIdx > 0 && (
+                                {sIdx >
+                                  0 && (
                                   <span className="size-1 rounded-full bg-primary/60 shrink-0" />
                                 )}
 
@@ -1056,7 +1708,8 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                     )}
 
                     {!isCardio &&
-                      lastSet?.rpe != null && (
+                      lastSet?.rpe !=
+                        null && (
                         <p className="text-xs font-medium text-primary pt-0.5">
                           Final set RPE:{" "}
                           {lastSet.rpe}
@@ -1078,7 +1731,9 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
       <div className="mt-4 flex gap-2">
         <Button
           className="w-full gap-2"
-          onClick={() => setDialogOpen(true)}
+          onClick={() =>
+            setDialogOpen(true)
+          }
         >
           <ClipboardPaste className="size-4" />
           Log Manual Session
@@ -1100,7 +1755,9 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
           accept=".csv"
           className="hidden"
           ref={fileInputRef}
-          onChange={handleCSVUpload}
+          onChange={
+            handleCSVUpload
+          }
         />
       </div>
     </section>
