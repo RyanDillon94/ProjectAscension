@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -11,13 +9,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { fetchLatestHevyWorkout, type HevyWorkout } from "@/lib/hevy.functions";
-import { Activity, Loader2, RefreshCw, Settings } from "lucide-react";
+import { Activity, ClipboardPaste, Save } from "lucide-react";
 import { toast } from "sonner";
+
+// We keep the HevyWorkout type locally so we don't break CoachDrawer's expectations
+export type HevyWorkout = {
+  title: string;
+  startTime: string;
+  exercises: {
+    title: string;
+    notes?: string;
+    sets: {
+      weightKg?: number;
+      weightLbs?: number;
+      reps?: number;
+      rpe?: number;
+      distance_meters?: number;
+      duration_seconds?: number;
+    }[];
+  }[];
+};
 
 function isCardioExercise(exerciseTitle: string, sets: any[]): boolean {
   const title = exerciseTitle.toLowerCase();
-  const cardioKeywords = ["walk", "run", "treadmill", "elliptical", "cycle", "bike", "rowing", "stair"];
+  const cardioKeywords = ["walk", "run", "treadmill", "elliptical", "cycle", "bike", "rowing", "stair", "bjj", "grappling", "wrestling", "mat"];
   const matchesKeyword = cardioKeywords.some((k) => title.includes(k));
   const hasCardioMetrics = sets.some(
     (s) =>
@@ -85,76 +100,129 @@ function formatWeight(weight: number | null | undefined, exerciseTitle: string) 
   return `${roundedKg}kg`;
 }
 
+// The Intelligence Engine: Parses unstructured copy-paste text into structured workout data
+function parseManualWorkout(raw: string): HevyWorkout {
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) throw new Error("No text provided.");
+
+  const title = lines[0];
+  const exercises: any[] = [];
+  let currentEx: any = null;
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Skip generic headers usually found in app copy-paste exports
+    if (/^(workout|duration|volume|date|time)\b/i.test(line) && /\d/.test(line)) continue;
+    if (/^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(line)) continue;
+
+    // Match standard sets: "100kg x 8", "BW x 15", "100 x 8 @ 8"
+    const setRegex = /(?:Set\s*\d+[:\-]?\s*)?(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*(kg|lbs)?|BW)\s*[xX×]\s*(\d+)(?:\s*@\s*(?:RPE\s*)?(\d+(?:\.\d+)?))?/i;
+    const setMatch = line.match(setRegex);
+
+    // Match cardio/duration: "60 mins", "5 km"
+    const cardioRegex = /(?:-\s*)?(\d+(?:\.\d+)?)\s*(km|mi|mins?|secs?|hours?|hr|m|s)\b/i;
+    const cardioMatch = line.match(cardioRegex);
+
+    if (setMatch) {
+      if (!currentEx) {
+        currentEx = { title: "Exercise", sets: [] };
+        exercises.push(currentEx);
+      }
+      const weightStr = setMatch[1];
+      const unitStr = setMatch[2]?.toLowerCase();
+      const repsStr = setMatch[3];
+      const rpeStr = setMatch[4];
+
+      const setObj: any = { reps: parseInt(repsStr, 10) };
+      if (weightStr) {
+        const w = parseFloat(weightStr);
+        if (unitStr === 'lbs') setObj.weightLbs = w;
+        else setObj.weightKg = w;
+      }
+      if (rpeStr) setObj.rpe = parseFloat(rpeStr);
+      currentEx.sets.push(setObj);
+    } else if (cardioMatch && !/[xX×]/.test(line)) {
+      if (!currentEx) {
+        currentEx = { title: "Conditioning", sets: [] };
+        exercises.push(currentEx);
+      }
+      const val = parseFloat(cardioMatch[1]);
+      const unit = cardioMatch[2].toLowerCase();
+
+      const setObj: any = {};
+      if (unit.startsWith('km') || unit.startsWith('mi')) {
+        setObj.distance_meters = unit.startsWith('mi') ? val * 1609.34 : val * 1000;
+      } else {
+        setObj.duration_seconds = unit.startsWith('h') ? val * 3600 : unit.startsWith('m') ? val * 60 : val;
+      }
+      currentEx.sets.push(setObj);
+    } else {
+      // It didn't match a set or duration, so it must be an exercise title
+      currentEx = { title: line.replace(/^- /, ''), sets: [] };
+      exercises.push(currentEx);
+    }
+  }
+
+  const validExercises = exercises.filter(ex => ex.sets.length > 0);
+
+  // Fallback: If no sets were parsed, wrap the raw text as a conditioning note so no data is lost
+  if (validExercises.length === 0) {
+    return {
+      title: title || "Manual Session Log",
+      startTime: new Date().toISOString(),
+      exercises: [{
+        title: "Session Details",
+        notes: lines.slice(1).join("\n"),
+        sets: [{ duration_seconds: 0 }] 
+      }]
+    };
+  }
+
+  return {
+    title,
+    startTime: new Date().toISOString(),
+    exercises: validExercises
+  };
+}
+
 export function HevyCard({
   workout: initialWorkout,
-  apiKey: initialApiKey,
-  onSaveKey,
   onWorkout,
 }: {
   workout: HevyWorkout | null;
-  apiKey: string;
-  onSaveKey?: (key: string) => Promise<void>;
+  apiKey?: string; // Kept to prevent breaking index.tsx props
+  onSaveKey?: (key: string) => Promise<void>; // Kept to prevent breaking index.tsx props
   onWorkout?: (workout: HevyWorkout) => Promise<void>;
 }) {
-  const [activeKey, setActiveKey] = useState(() => {
-    return localStorage.getItem("p35_hevy_api_key") || initialApiKey || "";
-  });
-  const [draftKey, setDraftKey] = useState(activeKey);
   const [currentWorkout, setCurrentWorkout] = useState<HevyWorkout | null>(() => {
     const cached = localStorage.getItem("p35_cached_workout");
     return cached ? JSON.parse(cached) : initialWorkout;
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [manualText, setManualText] = useState("");
 
-  useEffect(() => {
-    if (initialApiKey && !activeKey) {
-      setActiveKey(initialApiKey);
-      setDraftKey(initialApiKey);
-    }
-  }, [initialApiKey]);
-
-  const saveKey = async (value: string) => {
-    try {
-      const cleanKey = value.trim();
-      localStorage.setItem("p35_hevy_api_key", cleanKey);
-      setActiveKey(cleanKey);
-
-      if (onSaveKey) {
-        onSaveKey(cleanKey).catch(() => {});
-      }
-
-      toast.success(cleanKey ? "Hevy key saved locally." : "Key removed.");
-      setSettingsOpen(false);
-    } catch {
-      toast.error("Could not save key to device storage.");
-    }
-  };
-
-  const sync = async () => {
-    const keyToUse = activeKey.trim();
-    if (!keyToUse) {
-      setSettingsOpen(true);
-      toast.error("Add your Hevy API key first.");
+  const handleParseAndSave = () => {
+    if (!manualText.trim()) {
+      toast.error("Paste your workout text first.");
       return;
     }
-    setLoading(true);
+
     try {
-      const result = await fetchLatestHevyWorkout({ data: { apiKey: keyToUse } });
-      if (!result.workout) {
-        toast.error("No workouts found on that Hevy account.");
-      } else {
-        setCurrentWorkout(result.workout);
-        localStorage.setItem("p35_cached_workout", JSON.stringify(result.workout));
-        if (onWorkout) {
-          onWorkout(result.workout).catch(() => {});
-        }
-        toast.success("Latest Hevy workout synced.");
+      const parsedWorkout = parseManualWorkout(manualText);
+      setCurrentWorkout(parsedWorkout);
+      localStorage.setItem("p35_cached_workout", JSON.stringify(parsedWorkout));
+      
+      if (onWorkout) {
+        onWorkout(parsedWorkout).catch(() => {});
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Hevy sync failed.");
-    } finally {
-      setLoading(false);
+      
+      setManualText("");
+      setDialogOpen(false);
+      toast.success("Workout parsed and locked in.");
+    } catch (err) {
+      toast.error("Failed to parse workout format.");
     }
   };
 
@@ -165,39 +233,35 @@ export function HevyCard({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Activity className="size-5 text-primary" />
-          <h2 className="text-lg font-bold">Latest Workout</h2>
+          <h2 className="text-lg font-bold">Latest Session</h2>
         </div>
-        <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Hevy settings">
-              <Settings className="size-5" />
+            <Button variant="ghost" size="icon" aria-label="Log Manual Workout">
+              <ClipboardPaste className="size-5" />
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Hevy API Key</DialogTitle>
+              <DialogTitle>Log Session Data</DialogTitle>
               <DialogDescription>
-                Saved privately to your phone's browser. Get your key from the Hevy developer settings.
+                Paste your workout summary directly from Strong, Hevy, or Apple Notes.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2">
-              <Label htmlFor="hevy-key">API key</Label>
-              <Input
-                id="hevy-key"
-                type="password"
-                autoComplete="off"
-                value={draftKey}
-                onChange={(e) => setDraftKey(e.target.value)}
-                placeholder="Paste your Hevy API key"
+            <div className="space-y-2 pt-2">
+              <textarea
+                rows={8}
+                value={manualText}
+                onChange={(e) => setManualText(e.target.value)}
+                placeholder="e.g.&#10;BJJ Class&#10;60 mins&#10;&#10;OR&#10;&#10;Push Day&#10;Bench Press&#10;100kg x 8&#10;100kg x 8"
+                className="w-full resize-none rounded-lg border border-border bg-surface-2/40 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
               />
             </div>
-            <DialogFooter className="gap-2">
-              {activeKey && (
-                <Button variant="ghost" onClick={() => void saveKey("")}>
-                  Remove key
-                </Button>
-              )}
-              <Button onClick={() => void saveKey(draftKey)}>Save key</Button>
+            <DialogFooter>
+              <Button onClick={handleParseAndSave} className="w-full gap-2">
+                <Save className="size-4" /> Parse & Save Session
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -221,7 +285,7 @@ export function HevyCard({
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="truncate text-sm font-semibold">{ex.title}</p>
                     <span className="stat-label shrink-0">
-                      {ex.sets.length} {ex.sets.length === 1 ? "set" : "sets"}
+                      {ex.sets.length > 0 && ex.sets[0].duration_seconds === 0 ? "Notes" : `${ex.sets.length} ${ex.sets.length === 1 ? "set" : "sets"}`}
                     </span>
                   </div>
 
@@ -229,7 +293,7 @@ export function HevyCard({
                     <div className="mt-1.5 space-y-1">
                       {ex.sets.map((s: any, sIdx: number) => (
                         <p key={sIdx} className="text-xs font-medium text-primary">
-                          {formatCardio(s)}
+                          {s.duration_seconds === 0 ? "Details Logged" : formatCardio(s)}
                         </p>
                       ))}
                     </div>
@@ -253,8 +317,8 @@ export function HevyCard({
                     </p>
                   )}
                   {ex.notes && (
-                    <p className="mt-1.5 text-xs text-muted-foreground italic leading-relaxed">
-                      &ldquo;{ex.notes}&rdquo;
+                    <p className="mt-1.5 text-xs text-muted-foreground italic leading-relaxed whitespace-pre-wrap">
+                      {ex.notes}
                     </p>
                   )}
                 </div>
@@ -264,13 +328,13 @@ export function HevyCard({
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-          No workout synced yet. Add your key and pull your latest session.
+          No workout logged yet. Paste your latest session details to sync.
         </p>
       )}
 
-      <Button className="mt-4 w-full" onClick={() => void sync()} disabled={loading}>
-        {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-        Sync Hevy Workout
+      <Button className="mt-4 w-full gap-2" onClick={() => setDialogOpen(true)}>
+        <ClipboardPaste className="size-4" />
+        Log Manual Session
       </Button>
     </section>
   );
