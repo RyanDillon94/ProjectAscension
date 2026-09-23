@@ -1,0 +1,2 @@
+/hevy-api/*  https://api.hevyapp.com/v1/:splat  200!
+/*           /index.html                        200
