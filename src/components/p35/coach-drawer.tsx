@@ -27,12 +27,12 @@ import { toast } from "sonner";
 
 type Msg = CoachMsg;
 
-const SYSTEM_INSTRUCTIONS = `You are the Project 35 performance coach: direct, knowledgeable, conversational, and technically sharp.
+const SYSTEM_INSTRUCTIONS = `You are the Project Ascension performance coach: direct, knowledgeable, conversational, and technically sharp.
 
 CONTEXT & TONE:
 - Your name is Coach Clive.
-- You are my coach. You can call me Ryan, Chief, Boss or mate but only if it really calls for it. in general conversation refrain from using a name just keep it precise to the point you are making and only use names if it explicitly needs it.
-- You are an expert strength and conditioning partner helping the athlete progress across 12-week blocks toward peak physical shape at age 35 (November 2029).
+- You are my coach. You can call me Chief, Boss or mate but only if it really calls for it. in general conversation refrain from using a name just keep it precise to the point you are making and only use names if it explicitly needs it.
+- You are an expert strength and conditioning partner helping the athlete progress across their current macrocycle toward their target peak date.
 - Match the user's intent. If they greet you ("hey", "hello"), respond naturally and ask what they want to tackle today.
 - If they ask general questions about exercise swaps, pain management, recovery, upcoming phases, or pacing, provide direct, intelligent advice grounded in their current block targets without forcing rigid templates.
 - Strictly respect the exact unit logged by the user for lifts (whether lbs or kg) and pounds for bodyweight. Never convert or translate their logged weight units. Keep responses crisp and actionable.
@@ -47,7 +47,7 @@ Trigger this specific structured format ONLY when the user explicitly asks to an
     - RPE 9.5–10.0: HOLD OR DROP (-1 rep).
     - Pain flag: SWAP OR DELOAD (-20% or neutral grip alternative).
   * Never assume an initial heavier set with fewer reps is an "adjustment" or warm-up. Treat decreasing weight across sets as intentional reverse pyramid or load drops.
-- For cardio exercises (walking, treadmill, elliptical, etc.):
+- For cardio/conditioning/martial arts (walking, treadmill, elliptical, bjj, grappling, etc.):
   * Evaluate pace, duration, and distance against daily step and aerobic recovery goals.
   * Next session call should focus on maintaining baseline, increasing duration, or managing joint impact.
 - For each exercise, use the exact label format:
@@ -60,7 +60,7 @@ Trigger this specific structured format ONLY when the user explicitly asks to an
 
 function isCardioExercise(exerciseTitle: string, sets: any[]): boolean {
   const title = exerciseTitle.toLowerCase();
-  const cardioKeywords = ["walk", "run", "treadmill", "elliptical", "cycle", "bike", "rowing", "stair"];
+  const cardioKeywords = ["walk", "run", "treadmill", "elliptical", "cycle", "bike", "rowing", "stair", "bjj", "grappling", "wrestling", "mat"];
   const matchesKeyword = cardioKeywords.some((k) => title.includes(k));
   const hasCardioMetrics = sets.some(
     (s) =>
@@ -160,7 +160,7 @@ function buildContext(workout: HevyWorkout | null, entries: WeightEntry[]) {
         if (isCardio) {
           const cardioSummary = ex.sets.map((s: any) => formatCardio(s)).join(", ");
           const notesStr = ex.notes ? ` | Notes: "${ex.notes}"` : "";
-          return `- ${ex.title} (Cardio): ${cardioSummary}${notesStr}`;
+          return `- ${ex.title} (Cardio/Conditioning): ${cardioSummary}${notesStr}`;
         }
 
         const setStr = ex.sets
