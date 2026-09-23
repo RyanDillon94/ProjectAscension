@@ -15,22 +15,26 @@ import { useUserSettings, useWeighIns } from "@/lib/p35-cloud";
 import { WeeklyTrendsAnalytics } from "@/components/p35/weekly-trends-analytics";
 import { MissionArchiveCard } from "@/components/p35/mission-archive-card";
 import { todayKey, getAscensionProfile } from "@/lib/project35";
-import { TestModePanel } from '../components/TestModePanel';
+import { Onboarding } from "@/components/p35/Onboarding";
 
 export const Route = createFileRoute("/")({
   head: () => {
     const profile = getAscensionProfile();
+    const projectName = profile?.projectName ?? "Project Ascension";
+    const tagline = profile?.tagline ?? "Fitness Protocol";
+    const footerQuote = profile?.footerQuote ?? "";
+
     return {
       meta: [
-        { title: `${profile.projectName}: ${profile.tagline}` },
+        { title: `${projectName}: ${tagline}` },
         {
           name: "description",
-          content: profile.footerQuote,
+          content: footerQuote,
         },
-        { property: "og:title", content: `${profile.projectName}: ${profile.tagline}` },
+        { property: "og:title", content: `${projectName}: ${tagline}` },
         {
           property: "og:description",
-          content: profile.footerQuote,
+          content: footerQuote,
         },
         { property: "og:type", content: "website" },
         { name: "twitter:card", content: "summary_large_image" },
@@ -41,6 +45,15 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
+  const [setupComplete, setSetupComplete] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("p35_setup_complete") === "true";
+  });
+
+  if (!setupComplete) {
+    return <Onboarding onComplete={() => setSetupComplete(true)} />;
+  }
+
   return <Dashboard userId="local-user" />;
 }
 
@@ -49,7 +62,12 @@ function Dashboard({ userId }: { userId: string }) {
   const { hevyApiKey, workout, update } = useUserSettings(userId);
   const [isFinalised, setIsFinalised] = useState(false);
   
-  const [currentDate, setCurrentDate] = useState(() => localStorage.getItem("p35_active_date") || todayKey());
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("p35_active_date") || todayKey();
+    }
+    return todayKey();
+  });
 
   useEffect(() => {
     const appBootDay = todayKey();

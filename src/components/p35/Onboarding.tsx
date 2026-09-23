@@ -3,19 +3,23 @@ import { Button } from "@/components/ui/button";
 import { Key, Send, Loader2, Dumbbell } from "lucide-react";
 import { toast } from "sonner";
 
-const SYSTEM_PROMPT = `You are the Project Ascension performance coach. Your job is to set up a periodized, 12-month training and lifestyle plan for the user through a brief interview. 
+const SYSTEM_PROMPT = `You are the Project Ascension performance coach: sharp, conversational, analytical, and uncompromising. You are collaborating with the athlete to build their custom 12-month protocol.
 
-Ask the user these questions ONE AT A TIME. Do not ask the next question until they answer the current one. Use a direct, no-fluff coaching tone.
+DO NOT act like an automated survey or a rapid-fire questionnaire. Have a real, back-and-forth dialogue. Discuss their goals, challenge their assumptions if needed, and shape the plan together dynamically. 
 
-1. What is your primary 12-month goal (e.g., drop fat, prep for a BJJ tournament, build base strength) and your current vs. goal bodyweight?
-2. Are there any specific dates or deadlines we need to peak for (e.g., BJJ competitions, holidays)?
-3. What are your 3 to 5 daily non-negotiable habits? (e.g., 10k steps, 6 AM wake up, read 10 pages).
-4. What is your tagline for this 12-month block, and what is your personal footer quote (a gritty rule to live by, e.g., "Don't negotiate with weakness")?
+Cover these core elements naturally over the conversation:
+1. Their primary 12-month goal and target bodyweight (or physical milestone).
+2. Any major dates, events, or deadlines to peak for.
+3. Their core daily non-negotiable habits.
+4. Their overarching mission statement / tagline for the year (this must be a powerful, sentence-form declaration of intent, like "built over years, ready for anything, arriving at [milestone] in undeniable shape") and a gritty footer quote rule to live by.
 
-Once you have gathered all this information, design a phased timeline breaking the year into distinct phases (e.g., 'Base Build', 'Cut & Condition', 'Peak'). Calculate rough starting daily calories and protein for Phase 1 based on their goal.
+CRITICAL RULE FOR HABITS:
+Habits must be daily actionable behaviors or micro-routines (e.g., "10 mins post-workout mobility", "Read 10 pages", "Hydration target hit"). 
+NEVER include macro targets (like protein amounts) or macro workout splits (like "PPL + BJJ Split") as habits, as those are tracked elsewhere in the command centre.
+CRITICAL FORMATTING RULE FOR YOUR SUMMARY:
+Never squash lists, numbers, or section headers onto the same line. Every section header, every numbered point (e.g. **1. ...**), and every bullet point MUST be on its own brand-new line separated by a blank line. 
 
-Present a brief text summary of the plan for their approval. 
-If they approve, you MUST output a raw JSON object wrapped in \`\`\`json tags exactly matching the schema below, and say nothing else. Assign realistic 'start' and 'end' dates for the blocks in YYYY-MM-DD format starting from today.
+Once they approve it, you MUST output a raw JSON object wrapped in \`\`\`json tags exactly matching the schema below, and say nothing else. Assign realistic 'start' and 'end' dates for the blocks in YYYY-MM-DD format starting from today.
 
 {
   "projectName": "Project Ascension",
@@ -56,6 +60,60 @@ If they approve, you MUST output a raw JSON object wrapped in \`\`\`json tags ex
   ]
 }`;
 
+function FormattedMessage({ text }: { text: string }) {
+  const cleanedText = text
+    .replace(/---/g, "")
+    .replace(/([.!?])\s+(\*\*\d+\.)/g, "$1\n\n$2")
+    .replace(/\s+\*\s+(\*\*)/g, "\n\n• $1")
+    .replace(/\s+-\s+(\*\*)/g, "\n\n• $1");
+
+  const lines = cleanedText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  return (
+    <div className="space-y-2 text-sm leading-relaxed">
+      {lines.map((line, idx) => {
+        const subItems = line.split(/(?=\*\*\d+\.)|\s+\*\s+(?=\*\*)/).map(s => s.trim()).filter(Boolean);
+
+        return (
+          <div key={idx} className="space-y-1.5">
+            {subItems.map((sub, sIdx) => {
+              const isNumberedHeader = /^\*\*\d+\./.test(sub);
+              const isBullet = sub.startsWith("* ") || sub.startsWith("- ") || sub.startsWith("• ");
+              const cleanSub = sub.replace(/^[*•–-\s]+/, "");
+
+              return (
+                <p 
+                  key={sIdx} 
+                  className={
+                    isNumberedHeader 
+                      ? "font-bold text-foreground mt-3 mb-1" 
+                      : isBullet 
+                        ? "pl-3 flex items-start gap-2 font-medium" 
+                        : "font-normal"
+                  }
+                >
+                  {isBullet && <span className="text-primary mt-1">•</span>}
+                  <span className="flex-1">
+                    {cleanSub.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+                      part.startsWith("**") && part.endsWith("**") ? (
+                        <strong key={i} className="text-primary font-semibold">
+                          {part.slice(2, -2)}
+                        </strong>
+                      ) : (
+                        <span key={i}>{part}</span>
+                      ),
+                    )}
+                  </span>
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [apiKey, setApiKey] = useState("");
   const [hevyKey, setHevyKey] = useState("");
@@ -65,6 +123,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -72,55 +131,90 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
   }, [messages, isTyping]);
 
+  const handleInputResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const target = e.target;
+    target.style.height = "auto";
+    target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+  };
+
   const handleStartChat = () => {
-    if (!apiKey.trim()) {
+    // Aggressively strip ALL whitespace, tabs, or newlines from copy-pasting
+    const cleanApiKey = apiKey.replace(/\s+/g, '');
+    const cleanHevyKey = hevyKey.replace(/\s+/g, '');
+
+    if (!cleanApiKey) {
       toast.error("Gemini API key is required.");
       return;
     }
-    localStorage.setItem("p35_gemini_api_key", apiKey.trim());
-    if (hevyKey.trim()) localStorage.setItem("p35_hevy_api_key", hevyKey.trim());
+    
+    localStorage.setItem("p35_gemini_api_key", cleanApiKey);
+    if (cleanHevyKey) localStorage.setItem("p35_hevy_api_key", cleanHevyKey);
     
     setStep("chat");
-    
-    // Kick off the interview
-    sendMessage("Hello Coach. I am ready to set up my 12-month protocol.");
+    sendMessage("Hello Coach. Let's map out my 12-month protocol.");
   };
 
   const sendMessage = async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || isTyping) return;
     
+    // Grab the key and aggressively strip spaces/newlines right before we use it
+    const rawKey = localStorage.getItem("p35_gemini_api_key") || "";
+    const activeKey = rawKey.replace(/\s+/g, "");
+
+    if (!activeKey) {
+      toast.error("Gemini API key missing.");
+      setStep("keys");
+      return;
+    }
+
     const newMsgs = [...messages, { role: "user" as const, text }];
     setMessages(newMsgs);
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
     setIsTyping(true);
 
+    const models = ["gemini-3.6-flash", "gemini-3.8-flash"];
+    let reply = "";
+    let success = false;
+
     try {
-      // Format history for Gemini
       const contents = newMsgs.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${localStorage.getItem("p35_gemini_api_key")}`;
-      
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: contents,
-        }),
-      });
+      for (const model of models) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+        
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: contents,
+          }),
+        });
 
-      if (!res.ok) throw new Error("API failed");
-      const data = await res.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        if (res.ok) {
+          const data = await res.json();
+          reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          success = true;
+          break;
+        }
+      }
 
-      // Check if the AI outputted the final JSON block
+      if (!success) {
+        throw new Error("All model endpoints failed.");
+      }
+
       if (reply.includes("```json") && reply.includes("```")) {
         const jsonString = reply.split("```json")[1].split("```")[0].trim();
         try {
           const profile = JSON.parse(jsonString);
+          
           localStorage.setItem("ascension_user_profile", JSON.stringify(profile));
           localStorage.setItem("p35_setup_complete", "true");
           
@@ -135,7 +229,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
       setMessages([...newMsgs, { role: "model", text: reply }]);
     } catch (err) {
-      toast.error("Failed to connect to Coach.");
+      toast.error("Failed to connect to Coach. Check your API key.");
     } finally {
       setIsTyping(false);
     }
@@ -155,16 +249,38 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
           
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-primary">Gemini API Key</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-primary">Gemini API Key</label>
+                <a 
+                  href="https://aistudio.google.com/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  Get free key from AI Studio →
+                </a>
+              </div>
               <input 
                 type="password" 
                 value={apiKey} 
                 onChange={e => setApiKey(e.target.value)}
+                placeholder="AIzaSy..."
                 className="w-full rounded-md border border-border bg-surface-2/50 px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" 
               />
             </div>
+
             <div className="space-y-1.5 pt-2">
-              <label className="text-xs font-semibold text-primary">Hevy API Key (Optional)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-primary">Hevy API Key (Optional)</label>
+                <a 
+                  href="https://hevy.com/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-muted-foreground hover:text-primary underline transition-colors"
+                >
+                  **Hevy Pro plan required** →
+                </a>
+              </div>
               <input 
                 type="password" 
                 value={hevyKey} 
@@ -172,6 +288,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
                 className="w-full rounded-md border border-border bg-surface-2/50 px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" 
               />
             </div>
+
             <Button className="w-full h-12 mt-6 font-bold" onClick={handleStartChat}>
               Boot AI Coach
             </Button>
@@ -187,40 +304,50 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         <Dumbbell className="size-5 text-primary" />
         <div>
           <h2 className="text-sm font-bold">Coach Setup Protocol</h2>
-          <p className="text-xs text-muted-foreground">Answer the questions to build your roadmap.</p>
+          <p className="text-xs text-muted-foreground">Collaborate with your coach to build your roadmap.</p>
         </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 py-4 pr-2">
         {messages.filter(m => !m.text.includes("Hello Coach")).map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-xl px-4 py-2.5 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-surface-2/60 text-foreground"}`}>
-              {m.text}
+            <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-surface-2/60 text-foreground"}`}>
+              {m.role === "model" ? (
+                <FormattedMessage text={m.text} />
+              ) : (
+                m.text
+              )}
             </div>
           </div>
         ))}
         {isTyping && (
           <div className="flex justify-start">
-            <div className="bg-surface-2/60 text-muted-foreground rounded-xl px-4 py-3 flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" /> Coach is typing...
+            <div className="bg-surface-2/60 text-muted-foreground rounded-xl px-4 py-3 flex items-center gap-2 text-sm">
+              <Loader2 className="size-4 animate-spin" /> Coach is thinking...
             </div>
           </div>
         )}
       </div>
 
       <div className="pt-2 pb-4">
-        <div className="relative">
-          <input
-            type="text"
+        <div className="flex items-end gap-2 bg-surface-2/50 border border-border rounded-xl p-2 focus-within:border-primary transition-colors">
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && sendMessage(input)}
-            placeholder="Type your answer..."
-            className="w-full rounded-full border border-border bg-surface-2/50 pl-4 pr-12 py-3 text-sm focus:border-primary focus:outline-none"
+            onChange={handleInputResize}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(input);
+              }
+            }}
+            placeholder="Reply to coach (e.g., tweak calories, adjust phase)..."
+            className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none max-h-32 py-1.5 px-2 leading-relaxed"
           />
           <Button
             size="icon"
-            className="absolute right-1 top-1 size-9 rounded-full"
+            className="size-9 shrink-0 mb-0.5 rounded-lg"
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isTyping}
           >

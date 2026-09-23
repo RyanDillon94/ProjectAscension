@@ -201,17 +201,19 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         </div>
       </div>
 
-      {/* Target Metrics Grid */}
-      <div className="grid gap-2 sm:grid-cols-2">
+      {/* Target Metrics Grid (Fixed with responsive single/dual column and overflow-hidden) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {targetStats.map((s) => (
           <div
             key={s.label}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface-2/60 p-3"
+            className="rounded-xl border border-border bg-surface-2/60 p-3.5 flex flex-col justify-between overflow-hidden"
           >
-            <s.icon className="size-4 shrink-0 text-primary" />
-            <div className="min-w-0">
-              <p className="stat-label">{s.label}</p>
-              <p className="truncate text-sm font-semibold">{s.value}</p>
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+              <s.icon className="size-4 shrink-0 text-primary" />
+              <span>{s.label}</span>
+            </div>
+            <div className={`font-bold text-foreground truncate ${s.label === "Routine" ? "text-xs sm:text-sm leading-snug line-clamp-2" : "text-base"}`}>
+              {s.value}
             </div>
           </div>
         ))}

@@ -197,5 +197,3 @@ export function calculateTrainingProgress(sets: WorkoutSet[]): ProgressReport {
     weeklyTrend: [],
   };
 }
-
- export const calculateMuscleStrengthProgress = calculateTrainingProgress;

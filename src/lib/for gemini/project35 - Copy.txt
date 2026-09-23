@@ -1,10 +1,93 @@
 import { getCurrentDate, getDeloadOffset } from "../utils/dateUtils";
 
+export type AscensionUserProfile = {
+  projectName?: string;
+  tagline?: string;
+  footerQuote?: string;
+  startingWeight?: number;
+  goalWeight?: number;
+  targetDate?: string;
+  dailyTargets?: {
+    caloriesMin: number;
+    caloriesMax: number;
+    protein: number;
+    steps: number;
+    routine: string;
+  };
+  habits?: {
+    key: string;
+    label: string;
+    sublabel: string;
+  }[];
+  phases?: PhaseDef[];
+};
+
+export function getAscensionProfile(): AscensionUserProfile | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("ascension_user_profile");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Dynamic Daily Targets with reactive getters
+export const DAILY_TARGETS = {
+  get caloriesMin(): number {
+    return getAscensionProfile()?.dailyTargets?.caloriesMin ?? 2200;
+  },
+  get caloriesMax(): number {
+    return getAscensionProfile()?.dailyTargets?.caloriesMax ?? 2500;
+  },
+  get protein(): number {
+    return getAscensionProfile()?.dailyTargets?.protein ?? 180;
+  },
+  get steps(): number {
+    return getAscensionProfile()?.dailyTargets?.steps ?? 10000;
+  },
+  get routine(): string {
+    return (
+      getAscensionProfile()?.dailyTargets?.routine ??
+      "Morning Routine → Athletic Training Session"
+    );
+  },
+};
+
+export const getGoalWeight = (): number => getAscensionProfile()?.goalWeight ?? 185.0;
+export const getStartWeight = (): number => getAscensionProfile()?.startingWeight ?? 210.0;
+
+// Universal numerical proxies so existing calculations (e.g. goal - current) work smoothly
+export const GOAL_WEIGHT: any = new Proxy(Number, {
+  get(_, prop) {
+    const val = getGoalWeight();
+    if (prop === Symbol.toPrimitive) return (hint: string) => (hint === "string" ? String(val) : val);
+    if (prop === "valueOf") return () => val;
+    if (prop === "toString") return () => String(val);
+    const target = val as any;
+    return typeof target[prop] === "function" ? target[prop].bind(val) : target[prop];
+  },
+});
+
+export const START_WEIGHT: any = new Proxy(Number, {
+  get(_, prop) {
+    const val = getStartWeight();
+    if (prop === Symbol.toPrimitive) return (hint: string) => (hint === "string" ? String(val) : val);
+    if (prop === "valueOf") return () => val;
+    if (prop === "toString") return () => String(val);
+    const target = val as any;
+    return typeof target[prop] === "function" ? target[prop].bind(val) : target[prop];
+  },
+});
+
+export const TARGET_DATE = new Date(
+  getAscensionProfile()?.targetDate || "2027-09-01T00:00:00Z"
+);
+
 export type HabitDefinition = {
   key: string;
   label: string;
   sublabel: string;
-  isWeekdayOnly?: boolean;
 };
 
 export type BlockDef = {
@@ -25,31 +108,6 @@ export type PhaseDef = {
   summary: string;
   badges: string[];
   blocks: BlockDef[];
-};
-
-export type AscensionUserProfile = {
-  projectName?: string;
-  tagline?: string;
-  footerQuote?: string;
-  startingWeight?: number;
-  goalWeight?: number;
-  targetDate?: string;
-  dailyTargets?: {
-    caloriesMin: number;
-    caloriesMax: number;
-    protein: number;
-    steps: number;
-    routine: string;
-  };
-  targets?: {
-    caloriesMin: number;
-    caloriesMax: number;
-    protein: number;
-    steps: number;
-    routine: string;
-  };
-  habits?: HabitDefinition[];
-  phases?: PhaseDef[];
 };
 
 // Default 12-Month Periodized Template (Used until AI onboarding generates custom phases)
@@ -174,97 +232,9 @@ const DEFAULT_12_MONTH_PHASES: PhaseDef[] = [
   },
 ];
 
-const DEFAULT_PROFILE: AscensionUserProfile = {
-  projectName: "Project Ascension",
-  tagline: "Same Man, Higher Standards",
-  footerQuote: "Don't negotiate with weakness.",
-  startingWeight: 210,
-  goalWeight: 185,
-  targetDate: "2027-09-01T00:00:00Z",
-  dailyTargets: {
-    caloriesMin: 2200,
-    caloriesMax: 2500,
-    protein: 180,
-    steps: 10000,
-    routine: "Morning Routine → Athletic Training Session",
-  },
-  get targets() {
-    return this.dailyTargets;
-  },
-  habits: [],
-  phases: DEFAULT_12_MONTH_PHASES,
-};
-
-export function getAscensionProfile(): AscensionUserProfile {
-  if (typeof window === "undefined") return DEFAULT_PROFILE;
-  try {
-    const raw = localStorage.getItem("ascension_user_profile");
-    if (!raw) return DEFAULT_PROFILE;
-    const parsed = JSON.parse(raw);
-    return {
-      ...DEFAULT_PROFILE,
-      ...parsed,
-      targets: parsed.dailyTargets || parsed.targets || DEFAULT_PROFILE.dailyTargets,
-    };
-  } catch {
-    return DEFAULT_PROFILE;
-  }
-}
-
-// Dynamic Daily Targets with reactive getters
-export const DAILY_TARGETS = {
-  get caloriesMin(): number {
-    return getAscensionProfile().dailyTargets?.caloriesMin ?? 2200;
-  },
-  get caloriesMax(): number {
-    return getAscensionProfile().dailyTargets?.caloriesMax ?? 2500;
-  },
-  get protein(): number {
-    return getAscensionProfile().dailyTargets?.protein ?? 180;
-  },
-  get steps(): number {
-    return getAscensionProfile().dailyTargets?.steps ?? 10000;
-  },
-  get routine(): string {
-    return (
-      getAscensionProfile().dailyTargets?.routine ??
-      "Morning Routine → Athletic Training Session"
-    );
-  },
-};
-
-export const getGoalWeight = (): number => getAscensionProfile().goalWeight ?? 185.0;
-export const getStartWeight = (): number => getAscensionProfile().startingWeight ?? 210.0;
-
-export const GOAL_WEIGHT: any = new Proxy(Number, {
-  get(_, prop) {
-    const val = getGoalWeight();
-    if (prop === Symbol.toPrimitive) return (hint: string) => (hint === "string" ? String(val) : val);
-    if (prop === "valueOf") return () => val;
-    if (prop === "toString") return () => String(val);
-    const target = val as any;
-    return typeof target[prop] === "function" ? target[prop].bind(val) : target[prop];
-  },
-});
-
-export const START_WEIGHT: any = new Proxy(Number, {
-  get(_, prop) {
-    const val = getStartWeight();
-    if (prop === Symbol.toPrimitive) return (hint: string) => (hint === "string" ? String(val) : val);
-    if (prop === "valueOf") return () => val;
-    if (prop === "toString") return () => String(val);
-    const target = val as any;
-    return typeof target[prop] === "function" ? target[prop].bind(val) : target[prop];
-  },
-});
-
-export const TARGET_DATE = new Date(
-  getAscensionProfile().targetDate || "2027-09-01T00:00:00Z"
-);
-
 export function getPhases(): PhaseDef[] {
   const profile = getAscensionProfile();
-  return profile.phases && profile.phases.length > 0
+  return profile?.phases && profile.phases.length > 0
     ? profile.phases
     : DEFAULT_12_MONTH_PHASES;
 }
@@ -283,7 +253,7 @@ export function daysBetween(from: Date, to: Date) {
 
 export function getLongTermTarget(): string {
   const profile = getAscensionProfile();
-  return profile.tagline ? `Target: ${profile.tagline}` : "Project Ascension: 12-Month Peak";
+  return profile?.tagline ? `Target: ${profile.tagline}` : "Project Ascension: 12-Month Peak";
 }
 
 export const LONG_TERM_TARGET = {
@@ -296,8 +266,8 @@ export function getActiveBlockDetails(now = getCurrentDate()) {
   const offsetDays = getDeloadOffset();
   const adjustedNowMs = now.getTime() - offsetDays * 86_400_000;
 
-  let activePhase = phases[0] || DEFAULT_12_MONTH_PHASES[0];
-  let activeBlock = activePhase.blocks[0] || DEFAULT_12_MONTH_PHASES[0].blocks[0];
+  let activePhase = phases[0];
+  let activeBlock = phases[0].blocks[0];
 
   for (const phase of phases) {
     for (const block of phase.blocks) {
@@ -312,8 +282,8 @@ export function getActiveBlockDetails(now = getCurrentDate()) {
     }
   }
 
-  const lastPhase = phases[phases.length - 1] || activePhase;
-  const lastBlock = lastPhase.blocks[lastPhase.blocks.length - 1] || activeBlock;
+  const lastPhase = phases[phases.length - 1];
+  const lastBlock = lastPhase.blocks[lastPhase.blocks.length - 1];
   if (adjustedNowMs > new Date(`${lastBlock.end}T23:59:59Z`).getTime() + offsetDays * 86_400_000) {
     activePhase = lastPhase;
     activeBlock = lastBlock;
@@ -327,7 +297,8 @@ export function getActiveHabits(now = getCurrentDate()): HabitDefinition[] {
   const { activeBlock } = getActiveBlockDetails(now);
   const profile = getAscensionProfile();
 
-  if (profile.habits && profile.habits.length > 0) {
+  // If the user generated custom habits in setup, map them
+  if (profile?.habits && profile.habits.length > 0) {
     return profile.habits.map((h) => ({
       key: h.key,
       label: h.label,
@@ -335,6 +306,7 @@ export function getActiveHabits(now = getCurrentDate()): HabitDefinition[] {
     }));
   }
 
+  // Default habit stack
   const workoutHabit: HabitDefinition = isWeekend
     ? { key: "weekend_workout_complete", label: "Active Recovery / Walk", sublabel: "Weekend Standard" }
     : { key: "workout_complete", label: "Workout Completed", sublabel: "Session Logged" };
