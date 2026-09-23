@@ -1,21 +1,44 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Send, Loader2, Settings2 } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  RotateCcw,
+  Send,
+  Settings2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
+
+// ============================================================
+// FORMATTED AI MESSAGE
+// ============================================================
 
 function FormattedMessage({ text }: { text: string }) {
   const cleanedText = text
+    .replace(/```json[\s\S]*?```/g, "")
     .replace(/---/g, "")
-    .replace(/([.!?])\s+(\*\*\d+\.)/g, "$1\n\n$2")
-    .replace(/\s+\*\s+(\*\*)/g, "\n\n• $1")
-    .replace(/\s+-\s+(\*\*)/g, "\n\n• $1");
+    .replace(
+      /([.!?])\s+(\*\*\d+\.)/g,
+      "$1\n\n$2"
+    )
+    .replace(
+      /\s+\*\s+(\*\*)/g,
+      "\n\n• $1"
+    )
+    .replace(
+      /\s+-\s+(\*\*)/g,
+      "\n\n• $1"
+    );
 
   const lines = cleanedText
     .split(/\r?\n/)
@@ -26,57 +49,90 @@ function FormattedMessage({ text }: { text: string }) {
     <div className="space-y-2 text-sm leading-relaxed">
       {lines.map((line, idx) => {
         const subItems = line
-          .split(/(?=\*\*\d+\.)|\s+\*\s+(?=\*\*)/)
+          .split(
+            /(?=\*\*\d+\.)|\s+\*\s+(?=\*\*)/
+          )
           .map((s) => s.trim())
           .filter(Boolean);
 
         return (
-          <div key={idx} className="space-y-1.5">
-            {subItems.map((sub, sIdx) => {
-              const isNumberedHeader = /^\*\*\d+\./.test(sub);
+          <div
+            key={idx}
+            className="space-y-1.5"
+          >
+            {subItems.map(
+              (sub, sIdx) => {
+                const isNumberedHeader =
+                  /^\*\*\d+\./.test(
+                    sub
+                  );
 
-              const isBullet =
-                sub.startsWith("* ") ||
-                sub.startsWith("- ") ||
-                sub.startsWith("• ");
+                const isBullet =
+                  sub.startsWith("* ") ||
+                  sub.startsWith("- ") ||
+                  sub.startsWith("• ");
 
-              const cleanSub = sub.replace(/^[*•–-\s]+/, "");
+                const cleanSub =
+                  sub.replace(
+                    /^[*•–-\s]+/,
+                    ""
+                  );
 
-              return (
-                <p
-                  key={sIdx}
-                  className={
-                    isNumberedHeader
-                      ? "font-bold text-foreground mt-3 mb-1"
-                      : isBullet
-                        ? "pl-3 flex items-start gap-2 font-medium"
-                        : "font-normal"
-                  }
-                >
-                  {isBullet && (
-                    <span className="text-primary mt-1">•</span>
-                  )}
+                return (
+                  <p
+                    key={sIdx}
+                    className={
+                      isNumberedHeader
+                        ? "font-bold text-foreground mt-3 mb-1"
+                        : isBullet
+                          ? "pl-3 flex items-start gap-2 font-medium"
+                          : "font-normal"
+                    }
+                  >
+                    {isBullet && (
+                      <span className="text-primary mt-1">
+                        •
+                      </span>
+                    )}
 
-                  <span className="flex-1">
-                    {cleanSub
-                      .split(/(\*\*[^*]+\*\*)/g)
-                      .map((part, i) =>
-                        part.startsWith("**") &&
-                        part.endsWith("**") ? (
-                          <strong
-                            key={i}
-                            className="text-primary font-semibold"
-                          >
-                            {part.slice(2, -2)}
-                          </strong>
-                        ) : (
-                          <span key={i}>{part}</span>
-                        ),
-                      )}
-                  </span>
-                </p>
-              );
-            })}
+                    <span className="flex-1">
+                      {cleanSub
+                        .split(
+                          /(\*\*[^*]+\*\*)/g
+                        )
+                        .map(
+                          (
+                            part,
+                            i
+                          ) =>
+                            part.startsWith(
+                              "**"
+                            ) &&
+                            part.endsWith(
+                              "**"
+                            ) ? (
+                              <strong
+                                key={i}
+                                className="text-primary font-semibold"
+                              >
+                                {part.slice(
+                                  2,
+                                  -2
+                                )}
+                              </strong>
+                            ) : (
+                              <span
+                                key={i}
+                              >
+                                {part}
+                              </span>
+                            )
+                        )}
+                    </span>
+                  </p>
+                );
+              }
+            )}
           </div>
         );
       })}
@@ -84,299 +140,244 @@ function FormattedMessage({ text }: { text: string }) {
   );
 }
 
+// ============================================================
+// TYPES
+// ============================================================
+
+type ChatMessage = {
+  role: "user" | "model";
+  text: string;
+};
+
+type PendingUpdate = {
+  profile: Record<string, any>;
+  explanation: string;
+};
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+
 export function RecalibrateModal() {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const [messages, setMessages] = useState<
-    { role: "user" | "model"; text: string }[]
-  >([]);
-
-  const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-
-  /*
-   * ============================================================
-   * CONFIRMATION STATE
-   * ============================================================
-   *
-   * The coach must propose a change and explicitly ask for
-   * confirmation before JSON is allowed to update the profile.
-   */
-  const [awaitingConfirmation, setAwaitingConfirmation] =
+  const [isOpen, setIsOpen] =
     useState(false);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [messages, setMessages] =
+    useState<ChatMessage[]>([]);
 
-  /*
-   * ============================================================
-   * KEYBOARD / VISUAL VIEWPORT HANDLING
-   * ============================================================
-   */
+  const [input, setInput] =
+    useState("");
 
-  const [viewportHeight, setViewportHeight] = useState<number | null>(
-    null,
+  const [isTyping, setIsTyping] =
+    useState(false);
+
+  const [
+    pendingUpdate,
+    setPendingUpdate,
+  ] = useState<PendingUpdate | null>(
+    null
   );
 
-  useEffect(() => {
-    if (!isOpen) {
-      setViewportHeight(null);
-      return;
-    }
+  const scrollRef =
+    useRef<HTMLDivElement>(null);
 
-    const viewport = window.visualViewport;
+  const inputRef =
+    useRef<HTMLTextAreaElement>(null);
 
-    if (!viewport) {
-      return;
-    }
+  // ==========================================================
+  // KEEP CHAT SCROLLED TO BOTTOM
+  // ==========================================================
 
-    const updateViewport = () => {
-      setViewportHeight(viewport.height);
-    };
-
-    updateViewport();
-
-    viewport.addEventListener("resize", updateViewport);
-    viewport.addEventListener("scroll", updateViewport);
-
-    return () => {
-      viewport.removeEventListener("resize", updateViewport);
-      viewport.removeEventListener("scroll", updateViewport);
-    };
-  }, [isOpen]);
-
-  /*
-   * Keep the newest message visible.
-   */
   useEffect(() => {
     if (scrollRef.current) {
       requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop =
-            scrollRef.current.scrollHeight;
-        }
+        scrollRef.current!.scrollTop =
+          scrollRef.current!.scrollHeight;
       });
     }
-  }, [messages, isTyping]);
+  }, [
+    messages,
+    isTyping,
+    pendingUpdate,
+  ]);
 
-  /*
-   * Make sure the input remains visible when Android's
-   * keyboard opens.
-   */
-  const handleInputFocus = () => {
-    setTimeout(() => {
-      inputRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 250);
-  };
+  // ==========================================================
+  // SYSTEM PROMPT
+  // ==========================================================
 
-  /*
-   * ============================================================
-   * SYSTEM PROMPT
-   * ============================================================
-   *
-   * This deliberately makes the AI act as a coach rather than
-   * a passive JSON editor.
-   */
   const getSystemPrompt = () => {
     const currentProfile =
-      localStorage.getItem("ascension_user_profile") || "{}";
+      localStorage.getItem(
+        "ascension_user_profile"
+      ) || "{}";
 
-    return `You are the Project Ascension performance coach.
+    return `
+You are the Project Ascension performance coach.
 
-Your job is NOT to blindly execute whatever change the user asks for.
+The user is recalibrating an existing 12-month protocol.
 
-You are helping the user intelligently recalibrate their existing 12-month protocol.
-
-Here is their CURRENT protocol configuration (JSON):
-
+CURRENT PROTOCOL CONFIGURATION:
 ${currentProfile}
 
+Your job is NOT to blindly obey a requested change.
+
+The user may say things like:
+
+- "I've gained weight."
+- "Drop my calories."
+- "I'm not losing fast enough."
+- "I want more running."
+- "My habits aren't working."
+- "Move Phase 2."
+- "Increase my steps."
+
+These statements are NOT automatically instructions to modify the protocol.
+
 ============================================================
-CORE COACHING PRINCIPLE
+CORE DECISION PROCESS
 ============================================================
 
-When the user reports a problem or asks for a change, first understand the underlying problem and determine which protocol metric or intervention should actually change.
+Before changing anything, discuss the situation with the user.
 
-The user's requested solution is a PROPOSAL, not automatically the correct solution.
+You must first determine:
+
+1. What problem are we actually trying to solve?
+
+2. What evidence do we have?
+
+3. Is the requested metric actually the correct metric to change?
+
+4. Are there other explanations that should be considered?
+
+5. What is the smallest sensible protocol adjustment that addresses
+   the actual problem?
 
 For example:
 
-User:
-"I've gained weight. Drop my calories."
+If the user says:
 
-Do NOT immediately change calories.
+"I've gained weight."
 
-Instead, discuss whether calories are actually the appropriate lever.
+Do NOT immediately reduce calories.
 
-Consider relevant factors such as:
+Instead discuss things such as:
 
-- Current calorie target
-- Recent weight trend
-- Time period involved
-- Whether the change is likely meaningful
-- Adherence
-- Activity / steps
-- Training
-- Other relevant protocol metrics
-- Whether maintaining the current plan and collecting more data would be more appropriate
-- Whether a small adjustment would be preferable to a large adjustment
+- Is this a sustained trend or a short-term fluctuation?
+- What is the recent weight trend?
+- Has adherence changed?
+- Has activity changed?
+- Could water/glycogen/sodium explain some of the change?
+- Is the current rate of loss actually appropriate?
+- Is the goal fat loss, performance, adherence, or something else?
 
-The goal is to identify the most appropriate metric and the smallest sensible intervention that addresses the actual problem.
+Then determine which metric should actually be adjusted.
+
+Potential metrics include, but are not limited to:
+
+- calorie target
+- protein target
+- fibre target
+- daily steps
+- cardio volume
+- training frequency
+- running volume
+- recovery target
+- habit
+- phase dates
+- phase duration
+- bodyweight target
+- target rate of weight change
+
+Do not assume calories are the correct lever.
 
 ============================================================
-MANDATORY COACHING WORKFLOW
+NO PREMATURE UPDATES
 ============================================================
 
-Every requested protocol change must follow this process:
+You MUST discuss and agree the proposed change with the user before
+generating updated JSON.
 
-STEP 1 — UNDERSTAND
+Do NOT output JSON merely because the user requested a change.
 
-Clarify what the user is actually trying to achieve or what problem they are experiencing.
-
-STEP 2 — ASSESS
-
-Use the current protocol configuration and the information provided in the conversation to determine what matters.
-
-Do not invent data that is not available.
-
-If important information is missing, ask for it.
-
-STEP 3 — IDENTIFY THE METRIC
-
-Explain which metric or protocol component you think should change, if any.
-
-The metric might be calories, protein, steps, training frequency, phase dates, habit structure, running volume, recovery target, etc.
-
-It does NOT have to be the metric the user originally requested.
-
-STEP 4 — PROPOSE
-
-Give a specific proposed change.
+Instead, explain the proposed adjustment and ask for confirmation.
 
 For example:
 
-"Your current target is 2,400 kcal. Based on what you've told me, I'd propose reducing this modestly to 2,300 kcal rather than making a larger cut."
+"Based on what you've told me, I don't think calories are the first
+thing we should change. The more useful metric to adjust is your
+weekly average step target.
 
-Explain briefly why.
+I'd propose moving it from 10,000 to 12,000 for the next two weeks,
+then reassessing the trend.
 
-STEP 5 — CONFIRM
+Are you happy with that?"
 
-You MUST explicitly ask the user whether they want to proceed with that exact change.
+Then WAIT.
 
-For example:
+The user must explicitly confirm.
 
-"Do you want me to apply that change?"
+Accept confirmations such as:
 
-OR:
+- yes
+- yes, do it
+- confirm
+- confirmed
+- go ahead
+- apply it
+- sounds good
+- that's fine
+- make the change
+- do that
 
-"Are you happy for me to update the protocol to 2,300 kcal?"
-
-STOP HERE.
-
-Do NOT output JSON yet.
-
-============================================================
-CONFIRMATION RULE
-============================================================
-
-The user must explicitly confirm the proposed change before you generate JSON.
-
-Valid examples include:
-
-"yes"
-
-"yes, do it"
-
-"go ahead"
-
-"confirm"
-
-"apply it"
-
-"that's fine"
-
-"do that"
-
-"let's go with that"
-
-If the user disagrees, changes the proposed value, asks another question, or suggests a different approach, continue the coaching discussion.
-
-Do NOT generate JSON until the user has explicitly confirmed the CURRENT proposal.
-
-If the user says something ambiguous such as:
-
-"maybe"
-
-"what do you think?"
-
-"I'm not sure"
-
-"could we?"
-
-then continue discussing. That is NOT confirmation.
+If the user has NOT explicitly confirmed the agreed change, DO NOT
+output JSON.
 
 ============================================================
-VERY IMPORTANT — NO PREMATURE JSON
+FINAL UPDATE
 ============================================================
 
-NEVER output the updated JSON merely because the user requested a change.
+ONLY after explicit confirmation should you output:
 
-NEVER output JSON while proposing a change.
+1. A short confirmation sentence.
+2. The completely updated raw JSON object wrapped in:
 
-NEVER output JSON while asking for confirmation.
+\`\`\`json
+{
+  ...
+}
+\`\`\`
 
-NEVER treat the user's original request as confirmation.
-
-The sequence must be:
-
-USER REQUEST
-→ DISCUSSION
-→ PROPOSED CHANGE
-→ EXPLICIT CONFIRMATION
-→ UPDATED JSON
+Do not output anything after the JSON.
 
 ============================================================
-AFTER CONFIRMATION
+JSON RULES
 ============================================================
 
-ONLY after the user explicitly confirms the CURRENT proposed change:
+1. Maintain the EXACT SAME JSON SCHEMA as the current profile.
 
-1. Apply the agreed change.
-2. Preserve every other existing value.
-3. Maintain the EXACT SAME JSON schema as the current profile.
-4. Do not remove existing data unless explicitly agreed.
-5. Habits must remain daily actionable behaviours, not macro targets.
-6. Output the completely updated raw JSON object wrapped in \`\`\`json tags.
-7. After the JSON, say NOTHING else.
+2. Do not omit existing data unless the user explicitly asked to
+   remove it.
 
-============================================================
-MULTIPLE CHANGES
-============================================================
+3. Preserve all unrelated protocol settings.
 
-If the user wants several changes, do NOT silently bundle them into an update.
+4. Only modify the agreed changes.
 
-Discuss the changes and formulate the complete proposed adjustment.
+5. Habits must remain daily actionable behaviours.
 
-Then clearly summarise what will change.
+Examples:
 
-For example:
+GOOD:
+"10 mins mobility"
+"Read 10 pages"
+"Walk for 20 minutes"
+"Prepare tomorrow's meals"
 
-**Proposed recalibration**
+BAD:
+"220g protein"
+"2000 calories"
+"Hit macro target"
 
-**Calories:** 2,400 → 2,300 kcal
-
-**Steps:** remain at 12,500/day
-
-**Training:** unchanged
-
-Then ask:
-
-"Are you happy for me to apply all of those changes?"
-
-Only after confirmation should you output the JSON.
+6. Do not invent profile fields.
 
 ============================================================
 FORMATTING
@@ -384,136 +385,167 @@ FORMATTING
 
 Never squash lists, numbers, or section headers onto the same line.
 
-Every section header, numbered point, and bullet point MUST be on its own line with a blank line between sections.
+Every section header, numbered point and bullet point must be on its
+own line separated by a blank line.
 
-Keep normal coaching responses concise and direct.
+Be concise and conversational.
+
+Do not overwhelm the user with unnecessary analysis.
 
 ============================================================
-CURRENT PROFILE
+IMPORTANT
 ============================================================
 
-The current profile is authoritative for existing values and schema.
+The user is making a protocol decision with you.
 
-Do not invent missing profile fields.
+Your role is to reason through the adjustment with them rather than
+acting as a command parser.
 
-Do not change unrelated values.
+Do not change the protocol simply because the user asks for a specific
+metric to be changed.
 
-The user's explicit confirmation applies ONLY to the specific proposal currently being discussed.`;
+First determine whether that metric is actually the appropriate lever.
+
+Then agree the change.
+
+Then wait for confirmation.
+
+Only after confirmation should you produce the JSON.
+`;
   };
 
-  /*
-   * ============================================================
-   * CONFIRMATION DETECTION
-   * ============================================================
-   *
-   * This is a second layer of protection outside the AI prompt.
-   * Even if the AI accidentally produces JSON early, the app
-   * will not save it unless the UI is already waiting for a
-   * confirmation and the user's latest message is affirmative.
-   */
-  const isExplicitConfirmation = (text: string) => {
-    const normalised = text
-      .trim()
-      .toLowerCase()
-      .replace(/[.!?,]+$/g, "");
+  // ==========================================================
+  // OPEN / CLOSE
+  // ==========================================================
 
-    const confirmations = [
-      "yes",
-      "yes do it",
-      "yes, do it",
-      "go ahead",
-      "confirm",
-      "confirmed",
-      "apply it",
-      "apply that",
-      "do it",
-      "do that",
-      "that's fine",
-      "that is fine",
-      "sounds good",
-      "sounds good to me",
-      "lets go with that",
-      "let's go with that",
-      "go with that",
-      "i agree",
-      "agreed",
-      "make the change",
-      "make that change",
-      "update it",
-      "update that",
-      "proceed",
-    ];
-
-    return confirmations.includes(normalised);
-  };
-
-  /*
-   * Detect whether the coach has actually reached the point
-   * where it is asking the user to approve a proposal.
-   */
-  const isAskingForConfirmation = (text: string) => {
-    const lower = text.toLowerCase();
-
-    const confirmationPhrases = [
-      "do you want me to",
-      "are you happy for me to",
-      "would you like me to",
-      "shall i apply",
-      "should i apply",
-      "want me to apply",
-      "happy for me to apply",
-      "shall i make that change",
-      "do you want me to apply",
-      "are you happy with that",
-      "does that sound good",
-      "would you like to proceed",
-      "shall we go with that",
-      "do you agree",
-    ];
-
-    return confirmationPhrases.some((phrase) =>
-      lower.includes(phrase),
-    );
-  };
-
-  const handleOpenChange = (open: boolean) => {
+  const handleOpenChange = (
+    open: boolean
+  ) => {
     setIsOpen(open);
 
-    if (open && messages.length === 0) {
-      setMessages([
-        {
-          role: "model",
-          text: "Coach online. What are we recalibrating today?",
-        },
-      ]);
-    }
+    if (open) {
+      if (messages.length === 0) {
+        setMessages([
+          {
+            role: "model",
+            text:
+              "Coach online. Tell me what has changed and what you're thinking about adjusting. We'll work out what actually needs changing before touching the protocol.",
+          },
+        ]);
+      }
 
-    if (!open) {
-      setViewportHeight(null);
-      setAwaitingConfirmation(false);
+      setPendingUpdate(null);
+
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
     }
   };
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || isTyping) return;
+  // ==========================================================
+  // APPLY CONFIRMED UPDATE
+  // ==========================================================
 
-    const apiKey = localStorage.getItem("p35_gemini_api_key");
-
-    if (!apiKey) {
-      toast.error("Gemini API key missing.");
+  const applyPendingUpdate = () => {
+    if (!pendingUpdate) {
       return;
     }
 
-    const userIsConfirming =
-      awaitingConfirmation && isExplicitConfirmation(text);
+    try {
+      localStorage.setItem(
+        "ascension_user_profile",
+        JSON.stringify(
+          pendingUpdate.profile
+        )
+      );
 
-    const newMsgs = [
-      ...messages,
+      toast.success(
+        "Protocol Recalibrated. Reloading Command Centre."
+      );
+
+      setPendingUpdate(null);
+      setIsOpen(false);
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    } catch (error) {
+      console.error(
+        "Failed to save recalibrated profile:",
+        error
+      );
+
+      toast.error(
+        "Failed to save the updated protocol."
+      );
+    }
+  };
+
+  // ==========================================================
+  // CANCEL PENDING UPDATE
+  // ==========================================================
+
+  const cancelPendingUpdate = () => {
+    setPendingUpdate(null);
+
+    setMessages((prev) => [
+      ...prev,
       {
-        role: "user" as const,
-        text,
+        role: "model",
+        text:
+          "No problem. I haven't changed anything. We can keep discussing it or take a different approach.",
       },
-    ];
+    ]);
+  };
+
+  // ==========================================================
+  // SEND MESSAGE
+  // ==========================================================
+
+  const sendMessage = async (
+    text: string
+  ) => {
+    const trimmedText =
+      text.trim();
+
+    if (!trimmedText) {
+      return;
+    }
+
+    // --------------------------------------------------------
+    // Do not allow another request while an update is waiting
+    // for the user's final approval.
+    // --------------------------------------------------------
+
+    if (pendingUpdate) {
+      toast.error(
+        "Review or cancel the proposed update first."
+      );
+
+      return;
+    }
+
+    const apiKey =
+      localStorage.getItem(
+        "p35_gemini_api_key"
+      );
+
+    if (!apiKey) {
+      toast.error(
+        "Gemini API key missing."
+      );
+
+      return;
+    }
+
+    const newMsgs: ChatMessage[] =
+      [
+        ...messages,
+        {
+          role: "user",
+          text: trimmedText,
+        },
+      ];
 
     setMessages(newMsgs);
     setInput("");
@@ -529,132 +561,164 @@ The user's explicit confirmation applies ONLY to the specific proposal currently
     let success = false;
 
     try {
-      const contents = newMsgs.map((m) => ({
-        role: m.role,
-        parts: [{ text: m.text }],
-      }));
+      const contents =
+        newMsgs.map((m) => ({
+          role: m.role,
+          parts: [
+            {
+              text: m.text,
+            },
+          ],
+        }));
 
       for (const model of models) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url =
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: getSystemPrompt() }],
+        const res =
+          await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
             },
-            contents,
-          }),
-        });
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [
+                  {
+                    text: getSystemPrompt(),
+                  },
+                ],
+              },
+              contents,
+            }),
+          });
 
         if (res.ok) {
-          const data = await res.json();
+          const data =
+            await res.json();
 
           reply =
-            data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            data.candidates?.[0]
+              ?.content?.parts?.[0]
+              ?.text || "";
 
           success = true;
+
           break;
         }
       }
 
       if (!success) {
-        throw new Error("All model endpoints failed.");
+        throw new Error(
+          "All model endpoints failed."
+        );
       }
 
-      /*
-       * ========================================================
-       * JSON UPDATE GATE
-       * ========================================================
-       *
-       * JSON can ONLY be applied when:
-       *
-       * 1. The coach was waiting for confirmation.
-       * 2. The user's latest message is an explicit confirmation.
-       * 3. The AI actually returned valid JSON.
-       *
-       * This protects the profile even if the model ignores part
-       * of the system prompt.
-       */
-      const containsJson =
-        reply.includes("```json") &&
-        reply.includes("```");
+      // ======================================================
+      // CHECK FOR FINAL JSON
+      // ======================================================
 
-      if (
-        containsJson &&
-        awaitingConfirmation &&
-        userIsConfirming
-      ) {
-        const jsonString = reply
-          .split("```json")[1]
-          .split("```")[0]
-          .trim();
+      const hasJson =
+        reply.includes(
+          "```json"
+        ) &&
+        reply.includes(
+          "```"
+        );
 
-        try {
-          const updatedProfile = JSON.parse(jsonString);
-
-          localStorage.setItem(
-            "ascension_user_profile",
-            JSON.stringify(updatedProfile),
+      if (hasJson) {
+        const jsonMatch =
+          reply.match(
+            /```json\s*([\s\S]*?)\s*```/i
           );
 
-          toast.success(
-            "Protocol Recalibrated. Reloading Command Centre.",
-          );
+        if (jsonMatch) {
+          const jsonString =
+            jsonMatch[1].trim();
 
-          setAwaitingConfirmation(false);
-          setIsOpen(false);
+          try {
+            const updatedProfile =
+              JSON.parse(
+                jsonString
+              );
 
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
+            if (
+              !updatedProfile ||
+              typeof updatedProfile !==
+                "object" ||
+              Array.isArray(
+                updatedProfile
+              )
+            ) {
+              throw new Error(
+                "Invalid profile object."
+              );
+            }
 
-          return;
-        } catch (e) {
-          console.error("Failed to parse AI JSON", e);
+            // ------------------------------------------------
+            // IMPORTANT:
+            //
+            // DO NOT SAVE IT YET.
+            //
+            // The user gets one final human confirmation in
+            // the UI.
+            // ------------------------------------------------
 
-          toast.error(
-            "AI generated invalid data. Tell it to try again.",
-          );
+            const explanation =
+              reply
+                .replace(
+                  /```json[\s\S]*?```/i,
+                  ""
+                )
+                .trim();
+
+            setPendingUpdate({
+              profile:
+                updatedProfile,
+              explanation:
+                explanation ||
+                "The agreed protocol changes are ready to apply.",
+            });
+
+            setMessages([
+              ...newMsgs,
+              {
+                role: "model",
+                text:
+                  "I've got the agreed changes ready. Please review them below before I apply anything.",
+              },
+            ]);
+
+            return;
+          } catch (error) {
+            console.error(
+              "Failed to parse AI JSON:",
+              error
+            );
+
+            toast.error(
+              "The Coach generated invalid protocol data. Tell it to try again."
+            );
+
+            setMessages([
+              ...newMsgs,
+              {
+                role: "model",
+                text:
+                  "I reached the update stage, but the protocol data wasn't valid. Nothing has been changed. Please ask me to try the update again.",
+              },
+            ]);
+
+            return;
+          }
         }
       }
 
-      /*
-       * ========================================================
-       * SAFETY NET FOR PREMATURE JSON
-       * ========================================================
-       *
-       * If Gemini somehow outputs JSON before confirmation,
-       * DO NOT save it.
-       *
-       * Instead tell the coach that it needs to continue the
-       * discussion. The JSON is not written to localStorage.
-       */
-      if (containsJson && !userIsConfirming) {
-        console.warn(
-          "Blocked premature protocol update: explicit confirmation was not given.",
-        );
+      // ======================================================
+      // NORMAL CHAT RESPONSE
+      // ======================================================
 
-        setMessages([
-          ...newMsgs,
-          {
-            role: "model",
-            text:
-              "I haven't applied that change yet. Let's first agree on the exact adjustment and confirm it before I update your protocol.",
-          },
-        ]);
-
-        setAwaitingConfirmation(false);
-
-        return;
-      }
-
-      /*
-       * Normal conversational response.
-       */
       setMessages([
         ...newMsgs,
         {
@@ -662,38 +726,52 @@ The user's explicit confirmation applies ONLY to the specific proposal currently
           text: reply,
         },
       ]);
-
-      /*
-       * Only enter the confirmation state when the coach has
-       * actually proposed something and asked the user to approve
-       * it.
-       */
-      setAwaitingConfirmation(
-        isAskingForConfirmation(reply),
-      );
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Coach connection error:",
+        err
+      );
 
       toast.error(
-        "Failed to connect to Coach. Check your API key.",
+        "Failed to connect to Coach. Check your API key."
       );
     } finally {
       setIsTyping(false);
+
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
-  /*
-   * ============================================================
-   * DIALOG HEIGHT
-   * ============================================================
-   */
+  // ==========================================================
+  // ENTER KEY
+  // ==========================================================
 
-  const dialogHeight = viewportHeight
-    ? `${Math.max(viewportHeight - 16, 280)}px`
-    : "min(85dvh, 700px)";
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey
+    ) {
+      e.preventDefault();
+
+      sendMessage(input);
+    }
+  };
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={
+        handleOpenChange
+      }
+    >
       <DialogTrigger asChild>
         <Button
           variant="outline"
@@ -706,181 +784,235 @@ The user's explicit confirmation applies ONLY to the specific proposal currently
       </DialogTrigger>
 
       <DialogContent
-        style={{
-          height: dialogHeight,
-          maxHeight: viewportHeight
-            ? `${Math.max(viewportHeight - 16, 280)}px`
-            : "calc(100dvh - 2rem)",
-        }}
         className="
-          w-[calc(100vw-1rem)]
           max-w-lg
+          w-[95vw]
+          h-[min(720px,90dvh)]
+          max-h-[90dvh]
           flex
           flex-col
           overflow-hidden
           p-0
-          gap-0
         "
       >
-        {/* =====================================================
+        {/* ==================================================
             HEADER
-            ===================================================== */}
+        ================================================== */}
 
-        <DialogHeader
-          className="
-            shrink-0
-            px-4
-            pt-4
-            pb-3
-            border-b
-            border-border
-            bg-background
-            z-20
-          "
-        >
+        <DialogHeader className="shrink-0 p-5 pb-3 pr-12">
           <DialogTitle className="flex items-center gap-2 text-primary">
             <Settings2 className="size-5 shrink-0" />
-
-            <span>
-              AI Protocol Recalibration
-            </span>
+            AI Protocol Recalibration
           </DialogTitle>
+
+          <DialogDescription>
+            Discuss the change with Coach before
+            anything is applied to your protocol.
+          </DialogDescription>
         </DialogHeader>
 
-        {/* =====================================================
-            CHAT AREA
-            ===================================================== */}
+        {/* ==================================================
+            CHAT
+        ================================================== */}
 
-        <div
-          ref={scrollRef}
-          className="
-            flex-1
-            min-h-0
-            overflow-y-auto
-            overscroll-contain
-            px-4
-            py-4
-            space-y-4
-          "
-        >
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${
-                m.role === "user"
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
-              <div
-                className={`
-                  max-w-[90%]
-                  rounded-xl
-                  px-4
-                  py-3
-                  text-sm
-                  break-words
-                  ${
+        <div className="flex-1 min-h-0 px-5">
+          <div
+            ref={scrollRef}
+            className="
+              h-full
+              overflow-y-auto
+              rounded-lg
+              border
+              border-border
+              bg-surface-2/20
+              p-3
+              space-y-4
+              overscroll-contain
+            "
+          >
+            {messages.map(
+              (m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${
                     m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-surface-2/60 text-foreground"
-                  }
-                `}
-              >
-                {m.role === "model" ? (
-                  <FormattedMessage text={m.text} />
-                ) : (
-                  m.text
-                )}
-              </div>
-            </div>
-          ))}
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`
+                      max-w-[90%]
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      break-words
+                      ${
+                        m.role ===
+                        "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background border border-border text-foreground"
+                      }
+                    `}
+                  >
+                    {m.role ===
+                    "model" ? (
+                      <FormattedMessage
+                        text={
+                          m.text
+                        }
+                      />
+                    ) : (
+                      <span className="whitespace-pre-wrap">
+                        {
+                          m.text
+                        }
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
 
-          {isTyping && (
-            <div className="flex justify-start">
-              <div
-                className="
-                  bg-surface-2/60
-                  text-muted-foreground
-                  rounded-xl
-                  px-4
-                  py-3
-                  flex
-                  items-center
-                  gap-2
-                  text-sm
-                "
-              >
-                <Loader2 className="size-4 animate-spin" />
-
-                Coach is analyzing...
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-background border border-border text-muted-foreground rounded-lg px-3 py-2.5 flex items-center gap-2 text-sm">
+                  <Loader2 className="size-4 animate-spin" />
+                  Coach is thinking...
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* =====================================================
-            INPUT AREA
-            ===================================================== */}
+        {/* ==================================================
+            PENDING UPDATE CONFIRMATION
+        ================================================== */}
 
-        <div
-          className="
-            shrink-0
-            w-full
-            border-t
-            border-border
-            bg-background
-            px-4
-            pt-3
-            pb-3
-            z-20
-          "
-        >
-          <div className="flex items-center gap-2">
-            <input
+        {pendingUpdate && (
+          <div className="shrink-0 px-5 pt-3">
+            <div className="rounded-lg border border-primary/40 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-primary/10 p-2 shrink-0">
+                  <Settings2 className="size-4 text-primary" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Protocol change ready
+                  </p>
+
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    The Coach has finished
+                    discussing the change.
+                    Nothing has been saved yet.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border bg-background p-3 max-h-32 overflow-y-auto">
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                  {pendingUpdate.explanation}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={
+                    cancelPendingUpdate
+                  }
+                >
+                  <X className="size-4" />
+                  Don't Apply
+                </Button>
+
+                <Button
+                  className="flex-1 gap-2"
+                  onClick={
+                    applyPendingUpdate
+                  }
+                >
+                  <Check className="size-4" />
+                  Apply Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================================================
+            INPUT
+        ================================================== */}
+
+        <DialogFooter className="shrink-0 p-5 pt-3">
+          <div className="w-full flex items-end gap-2">
+            <textarea
               ref={inputRef}
-              type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onFocus={handleInputFocus}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-
-                  sendMessage(input);
-                }
-              }}
-              placeholder="E.g., 'I've gained weight...'"
-              autoComplete="off"
+              onChange={(e) =>
+                setInput(
+                  e.target.value
+                )
+              }
+              onKeyDown={
+                handleKeyDown
+              }
+              disabled={
+                isTyping ||
+                !!pendingUpdate
+              }
+              rows={1}
+              placeholder={
+                pendingUpdate
+                  ? "Review the proposed change above..."
+                  : "Tell Coach what has changed..."
+              }
               className="
                 flex-1
-                min-w-0
-                h-11
-                rounded-full
+                min-h-[44px]
+                max-h-28
+                resize-none
+                rounded-lg
                 border
                 border-border
-                bg-surface-2/50
-                px-4
+                bg-surface-2/40
+                px-3
+                py-2.5
                 text-sm
                 text-foreground
-                placeholder:text-muted-foreground
+                placeholder:text-muted-foreground/50
                 focus:border-primary
                 focus:outline-none
-                focus:ring-1
-                focus:ring-primary
+                disabled:opacity-60
               "
             />
 
             <Button
               size="icon"
-              className="size-11 shrink-0 rounded-full"
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isTyping}
+              className="size-11 shrink-0 rounded-lg"
+              onClick={() =>
+                sendMessage(
+                  input
+                )
+              }
+              disabled={
+                !input.trim() ||
+                isTyping ||
+                !!pendingUpdate
+              }
+              aria-label="Send message"
             >
-              <Send className="size-4" />
+              {isTyping ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
             </Button>
           </div>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
