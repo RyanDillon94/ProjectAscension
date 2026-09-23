@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PHASES, getAscensionProfile } from "@/lib/project35";
 import { getDeloadOffset } from "@/utils/dateUtils";
 import { Calendar, Map } from "lucide-react";
-import { RecalibrateModal } from "@/components/p35/recalibrate-modal";
+import { RecalibrateModal } from "@/components/p35/RecalibrateModal";
 
 function getShiftedBlockDates(blockStart: string, blockEnd: string, offsetDays: number) {
   const [sy, sm, sd] = blockStart.split("-").map(Number);
