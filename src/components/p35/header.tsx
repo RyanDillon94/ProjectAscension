@@ -16,19 +16,23 @@ export function DashboardHeader() {
 
   return (
     <header className="panel glow-ring relative overflow-hidden p-5 space-y-4">
-      <div className="flex items-start gap-3">
+      {/* Added w-full to the wrapper and flex-1 to the text container */}
+      <div className="flex w-full items-start gap-3">
         <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
           <ShieldHalf className="size-6" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="stat-label">Character sheet</p>
           <h1 className="text-2xl leading-tight font-bold">
-            Project Ascension: <br></br><span className="text-primary">Same Man, Higher Standards</span>
+            Project Ascension: <br />
+            <span className="text-primary">Same Man, Higher Standards</span>
           </h1>
         </div>
       </div>
 
-      <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">Forging unbreakable mental grit and a vascular,combat-ready physique.</p>
+      <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">
+        Forging unbreakable mental grit and a vascular, combat-ready physique.
+      </p>
 
       {/* Clean Phase Badge: Phase 1 • Block 1: The Clock */}
       <div className="flex flex-wrap items-center gap-2">
