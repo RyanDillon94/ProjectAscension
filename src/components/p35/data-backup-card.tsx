@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { getAscensionProfile } from "@/lib/project35";
 
 export function DataBackupCard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -13,7 +14,8 @@ export function DataBackupCard() {
       const backupData: Record<string, string> = {};
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith("p35_")) {
+        // Grab the core app keys AND the new dynamic profile keys
+        if (key && (key.startsWith("p35_") || key.startsWith("ascension_"))) {
           backupData[key] = localStorage.getItem(key) || "";
         }
       }
@@ -24,7 +26,15 @@ export function DataBackupCard() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `project-35-backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+      // Dynamically name the backup file based on his project name
+      const profile = getAscensionProfile();
+      const safeProjectName = (profile?.projectName || "project-ascension")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-");
+
+      link.download = `${safeProjectName}-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -58,7 +68,8 @@ export function DataBackupCard() {
 
         let count = 0;
         for (const [key, value] of Object.entries(backupData)) {
-          if (key.startsWith("p35_") && typeof value === "string") {
+          // Allow restoring both key types
+          if ((key.startsWith("p35_") || key.startsWith("ascension_")) && typeof value === "string") {
             localStorage.setItem(key, value);
             count++;
           }
