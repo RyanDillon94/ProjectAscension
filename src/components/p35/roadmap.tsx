@@ -1,7 +1,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PHASES } from "@/lib/project35";
+import { PHASES, getAscensionProfile } from "@/lib/project35";
 import { getDeloadOffset } from "@/utils/dateUtils";
 import { Calendar, Map } from "lucide-react";
 
@@ -61,14 +61,30 @@ function getPhaseWindow(phase: (typeof PHASES)[number], offsetDays: number): str
 
 export function Roadmap() {
   const offsetDays = getDeloadOffset();
+  const profile = getAscensionProfile();
+
+  const totalPhases = PHASES.length;
+  const blocksPerPhase = PHASES[0]?.blocks?.length || 2;
+  
+  // Dynamically calculate the final culmination date based on the last block
+  const lastPhase = PHASES[totalPhases - 1];
+  const lastBlock = lastPhase?.blocks[lastPhase.blocks.length - 1];
+  
+  let endMonthYear = "";
+  if (lastBlock) {
+    const { end } = getShiftedBlockDates(lastBlock.start, lastBlock.end, offsetDays);
+    endMonthYear = end.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  }
 
   return (
     <section className="panel p-5">
       <div className="flex items-center gap-2">
         <Map className="size-5 text-primary" />
-        <h2 className="text-lg font-bold">3-Year Macro Roadmap</h2>
+        <h2 className="text-lg font-bold">Macro Roadmap</h2>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">Six phases. Two blocks each. November 2029.</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {totalPhases} phases. {blocksPerPhase} blocks each. {endMonthYear ? `Culminating ${endMonthYear}.` : ""}
+      </p>
 
       <Accordion type="single" collapsible defaultValue="phase-1" className="mt-4">
         {PHASES.map((phase) => (
@@ -142,12 +158,17 @@ export function Roadmap() {
           </AccordionItem>
         ))}
       </Accordion>
-<br></br>
-      <div className="flex flex-col items-center">
-        <p className="text-center text-sm italic tracking-wide text-primary/90 font-medium">
-          &ldquo;Only cunts drink on weekdays... Don&apos;t be a cunt.&rdquo;
-        </p>
-      </div>
+      
+      {profile?.motto && (
+        <>
+          <br />
+          <div className="flex flex-col items-center">
+            <p className="text-center text-sm italic tracking-wide text-primary/90 font-medium">
+              &ldquo;{profile.motto}&rdquo;
+            </p>
+          </div>
+        </>
+      )}
     </section>
   );
 }
