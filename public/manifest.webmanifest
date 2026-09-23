@@ -9,7 +9,7 @@
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/p35-icon.svg",
+      "src": "/p35-icon.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
