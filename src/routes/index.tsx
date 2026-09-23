@@ -45,13 +45,20 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [setupComplete, setSetupComplete] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("p35_setup_complete") === "true";
-  });
+  const [isMounted, setIsMounted] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
 
-  if (!setupComplete) {
-    return <Onboarding onComplete={() => setSetupComplete(true)} />;
+  useEffect(() => {
+    setIsMounted(true);
+    setNeedsSetup(localStorage.getItem("p35_setup_complete") !== "true");
+  }, []);
+
+  // Wait for the client to mount before deciding what to render
+  // This completely stops the hydration mismatch crash
+  if (!isMounted) return null;
+
+  if (needsSetup) {
+    return <Onboarding onComplete={() => window.location.reload()} />;
   }
 
   return <Dashboard userId="local-user" />;

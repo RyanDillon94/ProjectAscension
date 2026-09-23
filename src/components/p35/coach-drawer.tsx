@@ -294,12 +294,22 @@ export function CoachDrawer({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [lastFailedPrompt, setLastFailedPrompt] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("p35_gemini_api_key") || "");
-  const [draftApiKey, setDraftApiKey] = useState(apiKey);
+  
+  // Initialize completely empty to prevent hydration mismatch
+  const [apiKey, setApiKey] = useState("");
+  const [draftApiKey, setDraftApiKey] = useState("");
+  
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load the saved key immediately after the first safe render
+  useEffect(() => {
+    const savedKey = localStorage.getItem("p35_gemini_api_key") || "";
+    setApiKey(savedKey);
+    setDraftApiKey(savedKey);
+  }, []);
 
   const handleInputResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -323,7 +333,9 @@ export function CoachDrawer({
 
   const saveGeminiKey = (key: string) => {
     const clean = key.trim();
-    localStorage.setItem("p35_gemini_api_key", clean);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("p35_gemini_api_key", clean);
+    }
     setApiKey(clean);
     setKeyDialogOpen(false);
     toast.success(clean ? "Gemini key saved." : "Gemini key removed.");

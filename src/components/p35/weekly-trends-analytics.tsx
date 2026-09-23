@@ -11,6 +11,7 @@ export function WeeklyTrendsAnalytics() {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
 
   const sets: WorkoutSet[] = useMemo(() => {
+    if (typeof window === "undefined") return []; // SSR Safe Check
     try {
       const raw = localStorage.getItem("p35_hevy_workouts") || localStorage.getItem("p35_cached_workout");
       if (!raw) return [];
@@ -86,7 +87,15 @@ export function WeeklyTrendsAnalytics() {
         const dayHabits = getActiveHabits(d);
 
         let parsedHabits: Record<string, boolean> = {};
-        const raw = localStorage.getItem(`p35_habits_${k}`);
+        let raw = null;
+        
+        // SSR Safe Check
+        if (typeof window !== "undefined") {
+          try {
+            raw = localStorage.getItem(`p35_habits_${k}`);
+          } catch {}
+        }
+        
         if (raw) {
           try {
             parsedHabits = JSON.parse(raw);
@@ -96,14 +105,12 @@ export function WeeklyTrendsAnalytics() {
         dayHabits.forEach((h: any) => {
           const labelLower = h.label.toLowerCase();
           
-          // Legacy regex to protect existing historical data without breaking custom habits
           const isLegacyWeekday = 
             h.key === "workout_complete" || 
             h.key === "early_morning" || 
             labelLower.includes("workout") || 
             /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower);
             
-          // Look for explicit property first, fall back to string matching
           const isWeekdayOnly = h.isWeekdayOnly !== undefined ? h.isWeekdayOnly : isLegacyWeekday;
 
           if (isWeekend && isWeekdayOnly) return;
@@ -119,16 +126,20 @@ export function WeeklyTrendsAnalytics() {
 
       const mondayKey = monday.toISOString().slice(0, 10);
       let protocolScore = -1;
-      try {
-        const rawProtocol = localStorage.getItem(`p35_weekly_protocol_${mondayKey}`);
-        if (rawProtocol) {
-          const protocolGoals = JSON.parse(rawProtocol);
-          if (Array.isArray(protocolGoals) && protocolGoals.length > 0) {
-            const completedCount = protocolGoals.filter((g: any) => g.completed || g.status === "completed").length;
-            protocolScore = Math.round((completedCount / protocolGoals.length) * 100);
+      
+      // SSR Safe Check
+      if (typeof window !== "undefined") {
+        try {
+          const rawProtocol = localStorage.getItem(`p35_weekly_protocol_${mondayKey}`);
+          if (rawProtocol) {
+            const protocolGoals = JSON.parse(rawProtocol);
+            if (Array.isArray(protocolGoals) && protocolGoals.length > 0) {
+              const completedCount = protocolGoals.filter((g: any) => g.completed || g.status === "completed").length;
+              protocolScore = Math.round((completedCount / protocolGoals.length) * 100);
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
 
       let finalScore = Math.round(habitScore);
       if (protocolScore >= 0) {

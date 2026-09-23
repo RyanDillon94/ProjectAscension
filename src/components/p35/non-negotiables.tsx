@@ -16,13 +16,16 @@ function shiftIsoDate(isoDate: string, daysDelta: number): string {
 export function NonNegotiables({ userId, onDateChange }: { userId: string | null; onDateChange?: (date: string) => void }) {
   const actualToday = todayKey();
   
-  // Initialize from shared active storage or live today
+  // SSR Safe initialization
   const [selectedDay, setSelectedDay] = useState(() => {
-    try {
-      return localStorage.getItem("p35_active_date") || actualToday;
-    } catch {
-      return actualToday;
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("p35_active_date") || actualToday;
+      } catch {
+        return actualToday;
+      }
     }
+    return actualToday;
   });
 
   const { habits, toggle } = useHabitDay(userId, selectedDay);
@@ -56,10 +59,12 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
   const handleNoteChange = (text: string) => {
     setNote(text);
-    try {
-      localStorage.setItem(journalKey, text);
-    } catch (err) {
-      console.error("Failed to save journal:", err);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(journalKey, text);
+      } catch (err) {
+        console.error("Failed to save journal:", err);
+      }
     }
   };
 
@@ -68,16 +73,17 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
       onError: (error) => toast.error(error instanceof Error ? error.message : "Could not save."),
     });
 
-  // Predictable date navigation
   const isToday = selectedDay >= actualToday;
 
   const updateSelectedDay = (newDate: string) => {
     setSelectedDay(newDate);
-    try {
-      localStorage.setItem("p35_active_date", newDate);
-      window.dispatchEvent(new Event("p35-date-changed"));
-      if (onDateChange) onDateChange(newDate);
-    } catch {}
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("p35_active_date", newDate);
+        window.dispatchEvent(new Event("p35-date-changed"));
+        if (onDateChange) onDateChange(newDate);
+      } catch {}
+    }
   };
 
   const stepDay = (delta: number) => {
@@ -96,13 +102,12 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
     });
   }, [selectedDay, actualToday, currentDateObj]);
 
-  // Weekly Top Form Score (Monday of current selected week through selected day)
+  // Weekly Top Form Score
   const statsMetric = useMemo(() => {
     const [y, m, dNum] = selectedDay.split("-").map(Number);
     const selDate = new Date(Date.UTC(y, m - 1, dNum, 12, 0, 0));
 
-    // Find Monday of the selected day's week (UTC-safe)
-    const dayOfWeek = selDate.getUTCDay(); // 0 is Sunday, 1 is Monday...
+    const dayOfWeek = selDate.getUTCDay(); 
     const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
 
     const mondayDate = new Date(selDate);
@@ -111,7 +116,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
     let totalPossibleChecks = 0;
     let totalCompletedChecks = 0;
 
-    // Loop from Monday up to the selected day
     const loopDate = new Date(mondayDate);
     while (loopDate.getTime() <= selDate.getTime()) {
       const k = loopDate.toISOString().slice(0, 10);
@@ -120,7 +124,14 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
       const dayHabits = getActiveHabits(loopDate);
 
-      const raw = localStorage.getItem(`p35_habits_${k}`);
+      // SSR Safe localStorage access
+      let raw = null;
+      if (typeof window !== "undefined") {
+        try {
+          raw = localStorage.getItem(`p35_habits_${k}`);
+        } catch {}
+      }
+
       let parsedHabits: Record<string, boolean> = {};
       if (raw) {
         try {
@@ -131,14 +142,12 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
       dayHabits.forEach((h: any) => {
         const labelLower = h.label.toLowerCase();
         
-        // Legacy regex to protect your existing historical data
         const isLegacyWeekday = 
           h.key === "workout_complete" || 
           h.key === "early_morning" || 
           labelLower.includes("workout") || 
           /\d{1,2}:\d{2}\s*[ap]m/i.test(labelLower);
 
-        // Look for explicit property first, fall back to string matching
         const isWeekdayOnly = h.isWeekdayOnly !== undefined ? h.isWeekdayOnly : isLegacyWeekday;
 
         if (isWeekend && isWeekdayOnly) {
@@ -146,7 +155,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         }
 
         totalPossibleChecks++;
-        // If we are looking at the currently selected day in state, use live `habits` state; otherwise read storage
         if (k === selectedDay && habits[h.key]) {
           totalCompletedChecks++;
         } else if (parsedHabits[h.key]) {
@@ -154,7 +162,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         }
       });
 
-      // Advance loop date by 1 day UTC
       loopDate.setUTCDate(loopDate.getUTCDate() + 1);
     }
 
@@ -168,7 +175,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
   const done = activeHabits.filter((h) => habits[h.key]).length;
 
-  // Dynamically fetch targets to prevent hardcoding your specific metrics
   const profile = getAscensionProfile();
   const liveTargets = profile?.targets || DAILY_TARGETS;
 
@@ -185,7 +191,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
 
   return (
     <section className="panel p-5 space-y-4">
-      {/* Top Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Dumbbell className="size-5 shrink-0 text-primary" />
@@ -201,25 +206,21 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         </div>
       </div>
 
-      {/* Target Metrics Grid (Fixed with responsive single/dual column and overflow-hidden) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         {targetStats.map((s) => (
           <div
             key={s.label}
-            className="rounded-xl border border-border bg-surface-2/60 p-3.5 flex flex-col justify-between overflow-hidden"
+            className="flex items-center gap-3 rounded-lg border border-border bg-surface-2/60 p-3"
           >
-            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              <s.icon className="size-4 shrink-0 text-primary" />
-              <span>{s.label}</span>
-            </div>
-            <div className={`font-bold text-foreground truncate ${s.label === "Routine" ? "text-xs sm:text-sm leading-snug line-clamp-2" : "text-base"}`}>
-              {s.value}
+            <s.icon className="size-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="stat-label">{s.label}</p>
+              <p className="truncate text-sm font-semibold">{s.value}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Date Stepper Bar */}
       <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/40 px-3 py-2">
         <button
           type="button"
@@ -247,7 +248,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         </button>
       </div>
 
-      {/* Habits Checklist for Selected Date */}
       <div className="space-y-2 pt-0.5">
         <p className="stat-label">Habit Check</p>
         {activeHabits.map((habit) => {
@@ -283,7 +283,6 @@ export function NonNegotiables({ userId, onDateChange }: { userId: string | null
         })}
       </div>
 
-      {/* Daily Journal Note for Selected Date */}
       <div className="pt-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground mb-1.5">
           <BookOpen className="size-3.5 text-primary" />

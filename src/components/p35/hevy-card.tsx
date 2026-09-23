@@ -195,9 +195,17 @@ export function HevyCard({
   onSaveKey?: (key: string) => Promise<void>; // Kept to prevent breaking index.tsx props
   onWorkout?: (workout: HevyWorkout) => Promise<void>;
 }) {
+  // SSR Safe initialization
   const [currentWorkout, setCurrentWorkout] = useState<HevyWorkout | null>(() => {
-    const cached = localStorage.getItem("p35_cached_workout");
-    return cached ? JSON.parse(cached) : initialWorkout;
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("p35_cached_workout");
+        return cached ? JSON.parse(cached) : initialWorkout;
+      } catch {
+        return initialWorkout;
+      }
+    }
+    return initialWorkout;
   });
   
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -212,7 +220,10 @@ export function HevyCard({
     try {
       const parsedWorkout = parseManualWorkout(manualText);
       setCurrentWorkout(parsedWorkout);
-      localStorage.setItem("p35_cached_workout", JSON.stringify(parsedWorkout));
+      
+      if (typeof window !== "undefined") {
+        localStorage.setItem("p35_cached_workout", JSON.stringify(parsedWorkout));
+      }
       
       if (onWorkout) {
         onWorkout(parsedWorkout).catch(() => {});

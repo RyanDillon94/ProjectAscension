@@ -60,6 +60,12 @@ Once they approve it, you MUST output a raw JSON object wrapped in \`\`\`json ta
   ]
 }`;
 
+const FALLBACK_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2-flash",
+];
+
 function FormattedMessage({ text }: { text: string }) {
   const cleanedText = text
     .replace(/---/g, "")
@@ -139,7 +145,6 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   };
 
   const handleStartChat = () => {
-    // Aggressively strip ALL whitespace, tabs, or newlines from copy-pasting
     const cleanApiKey = apiKey.replace(/\s+/g, '');
     const cleanHevyKey = hevyKey.replace(/\s+/g, '');
 
@@ -158,7 +163,6 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   const sendMessage = async (text: string) => {
     if (!text.trim() || isTyping) return;
     
-    // Grab the key and aggressively strip spaces/newlines right before we use it
     const rawKey = localStorage.getItem("p35_gemini_api_key") || "";
     const activeKey = rawKey.replace(/\s+/g, "");
 
@@ -176,9 +180,9 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
     }
     setIsTyping(true);
 
-    const models = ["gemini-3.6-flash", "gemini-3.8-flash"];
     let reply = "";
     let success = false;
+    let lastErrorMsg = "Gemini request failed.";
 
     try {
       const contents = newMsgs.map(m => ({
@@ -186,35 +190,55 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
         parts: [{ text: m.text }]
       }));
 
-      for (const model of models) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
-        
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents: contents,
-          }),
-        });
+      for (const model of FALLBACK_MODELS) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+          
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+              contents: contents,
+            }),
+          });
 
-        if (res.ok) {
-          const data = await res.json();
-          reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          success = true;
-          break;
+          const data = await res.json().catch(() => ({}));
+
+          if (res.ok) {
+            reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            if (reply) {
+              success = true;
+              break; // Stop falling back once a model succeeds
+            }
+          }
+
+          lastErrorMsg = data.error?.message || `HTTP ${res.status} on${model}`;
+          console.warn(`Model ${model} failed (${lastErrorMsg}). Cascading to next fallback...`);
+        } catch (fetchErr) {
+          lastErrorMsg = fetchErr instanceof Error ? fetchErr.message : "Network error";
         }
       }
 
       if (!success) {
-        throw new Error("All model endpoints failed.");
+        throw new Error(`All model endpoints failed: ${lastErrorMsg}`);
       }
 
-      if (reply.includes("```json") && reply.includes("```")) {
-        const jsonString = reply.split("```json")[1].split("```")[0].trim();
+      // Safe string creation to prevent markdown parser copy-paste breaks
+      const codeMarker = '`' + '`' + '`';
+      
+      if (reply.includes(`${codeMarker}json`) && reply.includes(codeMarker)) {
+        const jsonString = reply.split(`${codeMarker}json`)[1].split(codeMarker)[0].trim();
         try {
           const profile = JSON.parse(jsonString);
           
+          // Clear residual history to ensure a clean slate, then safely restore keys
+          const currentApiKey = localStorage.getItem("p35_gemini_api_key");
+          const currentHevyKey = localStorage.getItem("p35_hevy_api_key");
+          localStorage.clear();
+          if (currentApiKey) localStorage.setItem("p35_gemini_api_key", currentApiKey);
+          if (currentHevyKey) localStorage.setItem("p35_hevy_api_key", currentHevyKey);
+
           localStorage.setItem("ascension_user_profile", JSON.stringify(profile));
           localStorage.setItem("p35_setup_complete", "true");
           
@@ -229,7 +253,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
 
       setMessages([...newMsgs, { role: "model", text: reply }]);
     } catch (err) {
-      toast.error("Failed to connect to Coach. Check your API key.");
+      toast.error(err instanceof Error ? err.message : "Failed to connect to Coach. Check your API key.");
     } finally {
       setIsTyping(false);
     }
