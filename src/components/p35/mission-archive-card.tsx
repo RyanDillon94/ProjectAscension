@@ -242,13 +242,14 @@ export function MissionArchiveCard() {
             </div>
           </div>
 
-          <Button
-            variant="outline"
+                    <Button
+            variant="secondary"
             size="sm"
             className="pointer-events-none gap-1.5 h-8 text-xs shrink-0 min-w-[84px] justify-center"
           >
             <Archive className="size-3.5" />
             <span>View</span>
+          
           </Button>
         </div>
       </SheetTrigger>
