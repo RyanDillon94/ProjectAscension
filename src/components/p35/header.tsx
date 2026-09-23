@@ -1,8 +1,10 @@
 import { Badge } from "@/components/ui/badge";
-import { getActiveBlockCountdown } from "@/lib/project35";
+import { getActiveBlockCountdown, getAscensionProfile } from "@/lib/project35";
 import { Calendar, Flame, ShieldHalf, Target } from "lucide-react";
 
 export function DashboardHeader() {
+  const profile = getAscensionProfile();
+
   const {
     phaseId,
     blockName,
@@ -14,9 +16,13 @@ export function DashboardHeader() {
     progress,
   } = getActiveBlockCountdown();
 
+  // "Same Man, Higher Standards" is locked as the core project identity.
+  // The tagline becomes the dynamic italicized text below it.
+  const projectName = profile?.projectName || "Project Ascension";
+  const dynamicTagline = profile?.tagline || "Forging unbreakable mental grit and a vascular, combat-ready physique.";
+
   return (
     <header className="panel glow-ring relative overflow-hidden p-5 space-y-4">
-      {/* Added w-full to the wrapper and flex-1 to the text container */}
       <div className="flex w-full items-start gap-3">
         <div className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary">
           <ShieldHalf className="size-6" />
@@ -24,17 +30,17 @@ export function DashboardHeader() {
         <div className="min-w-0 flex-1">
           <p className="stat-label">Character sheet</p>
           <h1 className="text-2xl leading-tight font-bold">
-            Project Ascension: <br />
+            {projectName}: <br />
             <span className="text-primary">Same Man, Higher Standards</span>
           </h1>
         </div>
       </div>
 
       <p className="border-l-2 border-primary/60 pl-3 text-sm text-muted-foreground italic">
-        Forging unbreakable mental grit and a vascular, combat-ready physique.
+        {dynamicTagline}
       </p>
 
-      {/* Clean Phase Badge: Phase 1 • Block 1: The Clock */}
+      {/* Clean Phase Badge */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge className="gap-1.5 bg-primary/15 text-primary hover:bg-primary/20">
           <Flame className="size-3.5" />
