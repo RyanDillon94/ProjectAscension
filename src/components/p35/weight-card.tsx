@@ -21,7 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { GOAL_WEIGHT, START_WEIGHT, lastSundayKey } from "@/lib/project35";
+import { lastSundayKey, getAscensionProfile, START_WEIGHT as DEFAULT_START_WEIGHT, GOAL_WEIGHT as DEFAULT_GOAL_WEIGHT } from "@/lib/project35";
 import { Plus, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -55,13 +55,18 @@ export function WeightCard({
     }
   }, [propEntries]);
 
+  // Dynamically fetch weights from profile, falling back to defaults if not set
+  const profile = getAscensionProfile();
+  const ACTIVE_START_WEIGHT = profile?.startWeight ?? DEFAULT_START_WEIGHT;
+  const ACTIVE_GOAL_WEIGHT = profile?.goalWeight ?? DEFAULT_GOAL_WEIGHT;
+
   const sorted = useMemo(
     () => [...localEntries].sort((a, b) => a.date.localeCompare(b.date)),
     [localEntries]
   );
   const latest = sorted[sorted.length - 1]?.weight;
-  const dropped = latest != null ? +(START_WEIGHT - latest).toFixed(1) : 0;
-  const toGoal = latest != null ? +(latest - GOAL_WEIGHT).toFixed(1) : null;
+  const dropped = latest != null ? +(ACTIVE_START_WEIGHT - latest).toFixed(1) : 0;
+  const toGoal = latest != null ? +(latest - ACTIVE_GOAL_WEIGHT).toFixed(1) : null;
 
   const chartData = sorted.map((e) => {
     const [y, m, d] = e.date.split("-");
@@ -134,7 +139,7 @@ export function WeightCard({
             <DialogHeader>
               <DialogTitle>Log Sunday Weight</DialogTitle>
               <DialogDescription>
-                Enter your Sunday weekly average. Goal line is {GOAL_WEIGHT} lbs.
+                Enter your Sunday weekly average. Goal line is {ACTIVE_GOAL_WEIGHT} lbs.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -160,9 +165,9 @@ export function WeightCard({
               </div>
               {Number(weight) > 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Pounds dropped from start ({START_WEIGHT} lbs):{" "}
+                  Pounds dropped from start ({ACTIVE_START_WEIGHT} lbs):{" "}
                   <span className="font-semibold text-primary">
-                    {(START_WEIGHT - Number(weight)).toFixed(1)} lbs
+                    {(ACTIVE_START_WEIGHT - Number(weight)).toFixed(1)} lbs
                   </span>
                 </p>
               )}
@@ -208,7 +213,7 @@ export function WeightCard({
                 axisLine={false}
               />
               <YAxis
-                domain={[GOAL_WEIGHT - 6, "auto"]}
+                domain={[ACTIVE_GOAL_WEIGHT - 6, "auto"]}
                 tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
@@ -222,11 +227,11 @@ export function WeightCard({
                 }}
               />
               <ReferenceLine
-                y={GOAL_WEIGHT}
+                y={ACTIVE_GOAL_WEIGHT}
                 stroke="var(--gold)"
                 strokeDasharray="5 4"
                 label={{
-                  value: `Goal ${GOAL_WEIGHT}`,
+                  value: `Goal ${ACTIVE_GOAL_WEIGHT}`,
                   fill: "var(--gold)",
                   fontSize: 11,
                   position: "insideTopRight",
