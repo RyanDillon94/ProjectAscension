@@ -38,12 +38,17 @@ type HevyHistoryWorkout = HevyWorkout & {
   date: string;
 };
 
+// ============================================================
+// CARDIO DETECTION
+// ============================================================
+
 function isCardioExercise(
   exerciseTitle: string,
   sets: any[]
 ): boolean {
   const title = exerciseTitle.toLowerCase();
 
+  // Keep all of your friend's additional cardio keywords.
   const cardioKeywords = [
     "walk",
     "run",
@@ -79,6 +84,10 @@ function isCardioExercise(
   return matchesKeyword || hasCardioMetrics;
 }
 
+// ============================================================
+// CARDIO FORMATTING
+// ============================================================
+
 function formatCardio(s: any): string {
   const meters =
     s.distance_meters ??
@@ -108,10 +117,6 @@ function formatCardio(s: any): string {
       timeString = `${hrs}h ${mins}min`;
     } else if (mins > 0) {
       timeString = `${mins}min`;
-
-      if (secs > 0) {
-        timeString += ` ${secs}s`;
-      }
     } else {
       timeString = `${secs}s`;
     }
@@ -126,6 +131,12 @@ function formatCardio(s: any): string {
     : "Completed";
 }
 
+// ============================================================
+// WEIGHT FORMATTING
+// Matches the API-driven card's display formatting while
+// retaining your friend's explicit weightLbs support.
+// ============================================================
+
 function formatWeight(
   weightKg: number | null | undefined,
   weightLbs: number | null | undefined,
@@ -133,15 +144,26 @@ function formatWeight(
 ): string {
   const titleLower = exerciseTitle.toLowerCase();
 
+  // Match Ryan's formatting:
+  // Cable / pushdown / fly = display in lbs.
+  //
+  // IMPORTANT:
+  // Lat Pulldown is deliberately excluded from the
+  // "cable" rule, matching the API-driven card.
+
   const isCableOrLbs =
-    titleLower.includes("cable") ||
+    (titleLower.includes("cable") &&
+      !titleLower.includes("lat pulldown")) ||
     titleLower.includes("pushdown") ||
     titleLower.includes("fly");
 
+  // If the imported data explicitly contains lbs,
+  // preserve those lbs rather than converting them.
   if (weightLbs != null) {
-    const roundedLbs = Number.isInteger(weightLbs)
-      ? weightLbs
-      : Math.round(weightLbs * 10) / 10;
+    const roundedLbs =
+      Number.isInteger(weightLbs)
+        ? weightLbs
+        : Math.round(weightLbs * 2) / 2;
 
     return `${roundedLbs}lbs`;
   }
@@ -151,29 +173,36 @@ function formatWeight(
   }
 
   if (isCableOrLbs) {
-    const convertedLbs = weightKg * 2.20462;
+    const weightLbsConverted =
+      weightKg * 2.20462;
+
     const roundedLbs =
-      Math.round(convertedLbs * 2) / 2;
+      Math.round(weightLbsConverted * 2) / 2;
 
     return `${roundedLbs}lbs`;
   }
 
-  const roundedKg = Number.isInteger(weightKg)
-    ? weightKg
-    : Math.round(weightKg * 10) / 10;
+  const roundedKg =
+    Number.isInteger(weightKg)
+      ? weightKg
+      : Math.round(weightKg * 10) / 10;
 
   return `${roundedKg}kg`;
 }
 
-/**
- * Converts Hevy's:
- *
- * Monday, Sep 21, 2026 at 12:50pm
- *
- * into:
- *
- * 21/09/2026 12:50
- */
+// ============================================================
+// HEVY DATE FORMATTING
+// Converts:
+//
+// Monday, Sep 21, 2026 at 12:50pm
+//
+// into:
+//
+// 21/09/2026 12:50
+//
+// This is retained for manual/CSV parsing.
+// ============================================================
+
 function formatHevyDate(rawDate: string): string {
   const cleaned = rawDate
     .trim()
@@ -229,7 +258,8 @@ function formatHevyDate(rawDate: string): string {
     december: 11,
   };
 
-  const month = months[monthName.toLowerCase()];
+  const month =
+    months[monthName.toLowerCase()];
 
   if (month == null) {
     return rawDate.trim();
@@ -237,11 +267,17 @@ function formatHevyDate(rawDate: string): string {
 
   let hour = parseInt(hourStr, 10);
 
-  if (ampm.toLowerCase() === "pm" && hour !== 12) {
+  if (
+    ampm.toLowerCase() === "pm" &&
+    hour !== 12
+  ) {
     hour += 12;
   }
 
-  if (ampm.toLowerCase() === "am" && hour === 12) {
+  if (
+    ampm.toLowerCase() === "am" &&
+    hour === 12
+  ) {
     hour = 0;
   }
 
@@ -257,38 +293,31 @@ function formatHevyDate(rawDate: string): string {
     return rawDate.trim();
   }
 
-  const day = String(date.getDate()).padStart(2, "0");
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
   const monthFormatted = String(
     date.getMonth() + 1
   ).padStart(2, "0");
+
   const year = date.getFullYear();
 
-  const hours = String(date.getHours()).padStart(
-    2,
-    "0"
-  );
-  const minutes = String(date.getMinutes()).padStart(
-    2,
-    "0"
-  );
+  const hours = String(
+    date.getHours()
+  ).padStart(2, "0");
+
+  const minutes = String(
+    date.getMinutes()
+  ).padStart(2, "0");
 
   return `${day}/${monthFormatted}/${year} ${hours}:${minutes}`;
 }
 
-/**
- * Converts a Hevy date into a real ISO timestamp where
- * possible.
- *
- * Supports:
- *
- * Monday, Sep 21, 2026 at 12:50pm
- *
- * ISO dates
- *
- * and the already-formatted:
- *
- * 21/09/2026 12:50
- */
+// ============================================================
+// WORKOUT DATE PARSER
+// ============================================================
+
 function parseWorkoutDate(
   rawDate: string
 ): Date | null {
@@ -309,9 +338,7 @@ function parseWorkoutDate(
   }
 
   // ----------------------------------------------------------
-  // Hevy format:
-  //
-  // Monday, Sep 21, 2026 at 12:50pm
+  // Hevy format
   // ----------------------------------------------------------
 
   const cleaned = value
@@ -399,8 +426,7 @@ function parseWorkoutDate(
   }
 
   // ----------------------------------------------------------
-  // UK display format:
-  //
+  // UK display format
   // 21/09/2026 12:50
   // ----------------------------------------------------------
 
@@ -434,36 +460,77 @@ function parseWorkoutDate(
   return null;
 }
 
-/**
- * Returns a stable ISO timestamp for a workout.
- */
+// ============================================================
+// NORMALISE WORKOUT START TIME
+// ============================================================
+
 function normaliseWorkoutStartTime(
   rawDate: string
 ): string {
-  const parsed = parseWorkoutDate(rawDate);
+  const parsed =
+    parseWorkoutDate(rawDate);
 
   if (parsed) {
     return parsed.toISOString();
   }
 
-  return rawDate.trim() || new Date().toISOString();
+  return (
+    rawDate.trim() ||
+    new Date().toISOString()
+  );
 }
+
+// ============================================================
+// DISPLAY DATE
+//
+// This changes only how the stored workout date is displayed.
+// The underlying ISO date remains untouched for history,
+// sorting and Coach Clive.
+// ============================================================
+
+function formatDisplayWorkoutDate(
+  rawDate: string
+): string {
+  if (!rawDate) {
+    return "Date unknown";
+  }
+
+  const parsed =
+    parseWorkoutDate(rawDate);
+
+  if (!parsed) {
+    return rawDate;
+  }
+
+  // Match the API card's local date/time presentation.
+  return parsed.toLocaleString();
+}
+
+// ============================================================
+// MANUAL WORKOUT PARSER
+// ============================================================
 
 function parseManualWorkout(
   raw: string
 ): HevyWorkout {
-  const lines = raw.split(/\r?\n/);
+  const lines =
+    raw.split(/\r?\n/);
 
   if (lines.length === 0) {
-    throw new Error("No text provided.");
+    throw new Error(
+      "No text provided."
+    );
   }
 
-  const firstLine = lines[0].trim();
+  const firstLine =
+    lines[0].trim();
 
   let title =
-    firstLine || "Manual Session Log";
+    firstLine ||
+    "Manual Session Log";
 
-  let startTime = new Date().toISOString();
+  let startTime =
+    new Date().toISOString();
 
   let dateLineIndex = -1;
 
@@ -472,15 +539,19 @@ function parseManualWorkout(
     i < Math.min(lines.length, 4);
     i++
   ) {
-    const l = lines[i].trim();
+    const l =
+      lines[i].trim();
 
     if (
       /\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*(?:am|pm)\b/i.test(
         l
       )
     ) {
-      startTime = normaliseWorkoutStartTime(l);
+      startTime =
+        normaliseWorkoutStartTime(l);
+
       dateLineIndex = i;
+
       break;
     }
   }
@@ -491,7 +562,8 @@ function parseManualWorkout(
     )
   ) {
     if (dateLineIndex >= 0) {
-      title = `${firstLine} Session`;
+      title =
+        `${firstLine} Session`;
     } else {
       title = "Workout";
     }
@@ -500,6 +572,7 @@ function parseManualWorkout(
   const exercises: any[] = [];
 
   let currentEx: any = null;
+
   let noteBuffer: string[] = [];
 
   const flushNotes = () => {
@@ -507,43 +580,57 @@ function parseManualWorkout(
       noteBuffer.length > 0 &&
       currentEx
     ) {
-      let noteStr = noteBuffer
-        .join("\n")
-        .trim();
+      let noteStr =
+        noteBuffer
+          .join("\n")
+          .trim();
 
       if (
         noteStr.startsWith('"') &&
         noteStr.endsWith('"')
       ) {
-        noteStr = noteStr
-          .slice(1, -1)
-          .trim();
+        noteStr =
+          noteStr
+            .slice(1, -1)
+            .trim();
       }
 
       if (noteStr.length > 0) {
-        currentEx.notes = noteStr;
+        currentEx.notes =
+          noteStr;
       }
     }
 
     noteBuffer = [];
   };
 
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
+  for (
+    let i = 1;
+    i < lines.length;
+    i++
+  ) {
+    const line =
+      lines[i].trim();
 
     if (!line) {
-      if (noteBuffer.length > 0) {
+      if (
+        noteBuffer.length > 0
+      ) {
         noteBuffer.push("");
       }
 
       continue;
     }
 
-    if (line.startsWith("@hevyapp")) {
+    if (
+      line.startsWith("@hevyapp")
+    ) {
       continue;
     }
 
-    if (line.startsWith("https://")) {
+    if (
+      line.startsWith("https://")
+    ) {
       continue;
     }
 
@@ -564,15 +651,18 @@ function parseManualWorkout(
         "friday",
         "saturday",
         "sunday",
-      ].includes(line.toLowerCase()) &&
+      ].includes(
+        line.toLowerCase()
+      ) &&
       line.length < 12
     ) {
       continue;
     }
 
-    const setMatch = line.match(
-      /(?:Set\s*\d+[:\-]?\s*)?(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*(kg|lbs)?|BW)\s*[xX×]\s*(\d+)(?:\s*@\s*(?:RPE\s*)?(\d+(?:\.\d+)?)\s*(?:RPE)?\s*)?/i
-    );
+    const setMatch =
+      line.match(
+        /(?:Set\s*\d+[:\-]?\s*)?(?:-\s*)?(?:(\d+(?:\.\d+)?)\s*(kg|lbs)?|BW)\s*[xX×]\s*(\d+)(?:\s*@\s*(?:RPE\s*)?(\d+(?:\.\d+)?)\s*(?:RPE)?\s*)?/i
+      );
 
     const cardioMatch =
       /(\d+(?:\.\d+)?)\s*(km|mi|mins?|secs?|hours?|hr|m|s)\b/i.test(
@@ -582,11 +672,21 @@ function parseManualWorkout(
     const isSetLine =
       setMatch !== null ||
       (cardioMatch &&
-        (line.toLowerCase().includes("km") ||
-          line.toLowerCase().includes("min") ||
-          line.toLowerCase().includes("mi") ||
-          line.toLowerCase().includes("sec") ||
-          line.toLowerCase().includes("hour")));
+        (line
+          .toLowerCase()
+          .includes("km") ||
+          line
+            .toLowerCase()
+            .includes("min") ||
+          line
+            .toLowerCase()
+            .includes("mi") ||
+          line
+            .toLowerCase()
+            .includes("sec") ||
+          line
+            .toLowerCase()
+            .includes("hour")));
 
     if (isSetLine) {
       flushNotes();
@@ -597,7 +697,9 @@ function parseManualWorkout(
           sets: [],
         };
 
-        exercises.push(currentEx);
+        exercises.push(
+          currentEx
+        );
       }
 
       if (setMatch) {
@@ -610,50 +712,65 @@ function parseManualWorkout(
         ] = setMatch;
 
         const setObj: any = {
-          reps: parseInt(repsStr, 10),
+          reps: parseInt(
+            repsStr,
+            10
+          ),
         };
 
         if (wStr) {
-          const weight = parseFloat(wStr);
+          const weight =
+            parseFloat(wStr);
 
           if (
             unit &&
-            unit.toLowerCase() === "lbs"
+            unit.toLowerCase() ===
+              "lbs"
           ) {
-            setObj.weightLbs = weight;
+            setObj.weightLbs =
+              weight;
           } else {
-            setObj.weightKg = weight;
+            setObj.weightKg =
+              weight;
           }
         }
 
         if (rpeStr) {
-          setObj.rpe = parseFloat(rpeStr);
+          setObj.rpe =
+            parseFloat(rpeStr);
         }
 
-        currentEx.sets.push(setObj);
+        currentEx.sets.push(
+          setObj
+        );
       } else {
         const setObj: any = {};
 
-        const kmMatch = line.match(
-          /(\d+(?:\.\d+)?)\s*(km|mi)\b/i
-        );
+        const kmMatch =
+          line.match(
+            /(\d+(?:\.\d+)?)\s*(km|mi)\b/i
+          );
 
-        const hourMatch = line.match(
-          /(\d+(?:\.\d+)?)\s*(?:hours?|hr)\b/i
-        );
+        const hourMatch =
+          line.match(
+            /(\d+(?:\.\d+)?)\s*(?:hours?|hr)\b/i
+          );
 
-        const minMatch = line.match(
-          /(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b/i
-        );
+        const minMatch =
+          line.match(
+            /(\d+(?:\.\d+)?)\s*(?:mins?|minutes?)\b/i
+          );
 
-        const secMatch = line.match(
-          /(\d+(?:\.\d+)?)\s*(?:secs?|seconds?|s)\b/i
-        );
+        const secMatch =
+          line.match(
+            /(\d+(?:\.\d+)?)\s*(?:secs?|seconds?|s)\b/i
+          );
 
         if (kmMatch) {
-          const value = parseFloat(
-            kmMatch[1]
-          );
+          const value =
+            parseFloat(
+              kmMatch[1]
+            );
 
           const unit =
             kmMatch[2].toLowerCase();
@@ -668,32 +785,42 @@ function parseManualWorkout(
 
         if (hourMatch) {
           totalSeconds +=
-            parseFloat(hourMatch[1]) * 3600;
+            parseFloat(
+              hourMatch[1]
+            ) * 3600;
         }
 
         if (minMatch) {
           totalSeconds +=
-            parseFloat(minMatch[1]) * 60;
+            parseFloat(
+              minMatch[1]
+            ) * 60;
         }
 
         if (secMatch) {
-          totalSeconds += parseFloat(
-            secMatch[1]
-          );
+          totalSeconds +=
+            parseFloat(
+              secMatch[1]
+            );
         }
 
-        if (totalSeconds > 0) {
+        if (
+          totalSeconds > 0
+        ) {
           setObj.duration_seconds =
             totalSeconds;
         }
 
-        currentEx.sets.push(setObj);
+        currentEx.sets.push(
+          setObj
+        );
       }
     } else if (
       line.startsWith('"') ||
       line.endsWith('"') ||
       (currentEx &&
-        currentEx.sets.length === 0 &&
+        currentEx.sets.length ===
+          0 &&
         !/\d+\s*(kg|lbs|km|min|sec)/i.test(
           line
         ))
@@ -702,16 +829,19 @@ function parseManualWorkout(
     } else {
       flushNotes();
 
-      const exerciseTitle = line
-        .replace(/^-\s*/, "")
-        .trim();
+      const exerciseTitle =
+        line
+          .replace(/^-\s*/, "")
+          .trim();
 
       currentEx = {
         title: exerciseTitle,
         sets: [],
       };
 
-      exercises.push(currentEx);
+      exercises.push(
+        currentEx
+      );
     }
   }
 
@@ -725,17 +855,26 @@ function parseManualWorkout(
           ex.notes.length > 0)
     );
 
-  if (validExercises.length === 0) {
+  if (
+    validExercises.length === 0
+  ) {
     return {
       title:
-        title || "Manual Session Log",
+        title ||
+        "Manual Session Log",
+
       startTime,
+
       exercises: [
         {
-          title: "Session Details",
-          notes: lines
-            .slice(1)
-            .join("\n"),
+          title:
+            "Session Details",
+
+          notes:
+            lines
+              .slice(1)
+              .join("\n"),
+
           sets: [
             {
               duration_seconds: 0,
@@ -749,9 +888,14 @@ function parseManualWorkout(
   return {
     title,
     startTime,
-    exercises: validExercises,
+    exercises:
+      validExercises,
   };
 }
+
+// ============================================================
+// MAIN CARD
+// ============================================================
 
 export function HevyCard({
   workout: initialWorkout,
@@ -761,41 +905,55 @@ export function HevyCard({
 }: {
   workout: HevyWorkout | null;
   apiKey?: string;
-  onSaveKey?: (key: string) => Promise<void>;
+  onSaveKey?: (
+    key: string
+  ) => Promise<void>;
   onWorkout?: (
     workout: HevyWorkout
   ) => Promise<void>;
 }) {
-  const [currentWorkout, setCurrentWorkout] =
-    useState<HevyWorkout | null>(() => {
-      if (
-        typeof window !== "undefined"
-      ) {
-        try {
-          const cached =
-            localStorage.getItem(
-              "p35_cached_workout"
-            );
+  const [
+    currentWorkout,
+    setCurrentWorkout,
+  ] =
+    useState<HevyWorkout | null>(
+      () => {
+        if (
+          typeof window !==
+          "undefined"
+        ) {
+          try {
+            const cached =
+              localStorage.getItem(
+                "p35_cached_workout"
+              );
 
-          return cached
-            ? JSON.parse(cached)
-            : initialWorkout;
-        } catch {
-          return initialWorkout;
+            return cached
+              ? JSON.parse(cached)
+              : initialWorkout;
+          } catch {
+            return initialWorkout;
+          }
         }
+
+        return initialWorkout;
       }
+    );
 
-      return initialWorkout;
-    });
+  const [
+    dialogOpen,
+    setDialogOpen,
+  ] = useState(false);
 
-  const [dialogOpen, setDialogOpen] =
-    useState(false);
-
-  const [manualText, setManualText] =
-    useState("");
+  const [
+    manualText,
+    setManualText,
+  ] = useState("");
 
   const fileInputRef =
-    useRef<HTMLInputElement>(null);
+    useRef<HTMLInputElement>(
+      null
+    );
 
   // ============================================================
   // KEEP CARD IN SYNC WITH PARENT WORKOUT
@@ -803,7 +961,9 @@ export function HevyCard({
 
   useEffect(() => {
     if (initialWorkout) {
-      setCurrentWorkout(initialWorkout);
+      setCurrentWorkout(
+        initialWorkout
+      );
     }
   }, [initialWorkout]);
 
@@ -811,73 +971,71 @@ export function HevyCard({
   // MANUAL WORKOUT
   // ============================================================
 
-  const handleParseAndSave = () => {
-    if (!manualText.trim()) {
-      toast.error(
-        "Paste your workout text first."
-      );
-
-      return;
-    }
-
-    try {
-      const parsedWorkout =
-        parseManualWorkout(
-          manualText
+  const handleParseAndSave =
+    () => {
+      if (!manualText.trim()) {
+        toast.error(
+          "Paste your workout text first."
         );
 
-      setCurrentWorkout(
-        parsedWorkout
-      );
-
-      if (
-        typeof window !==
-        "undefined"
-      ) {
-        localStorage.setItem(
-          "p35_cached_workout",
-          JSON.stringify(
-            parsedWorkout
-          )
-        );
-
-        // IMPORTANT:
-        // Tell Coach Clive immediately that a
-        // new workout has been loaded.
-        window.dispatchEvent(
-          new CustomEvent(
-            "p35:workout-updated",
-            {
-              detail:
-                parsedWorkout,
-            }
-          )
-        );
+        return;
       }
 
-      if (onWorkout) {
-        onWorkout(
+      try {
+        const parsedWorkout =
+          parseManualWorkout(
+            manualText
+          );
+
+        setCurrentWorkout(
           parsedWorkout
-        ).catch(() => {});
+        );
+
+        if (
+          typeof window !==
+          "undefined"
+        ) {
+          localStorage.setItem(
+            "p35_cached_workout",
+            JSON.stringify(
+              parsedWorkout
+            )
+          );
+
+          window.dispatchEvent(
+            new CustomEvent(
+              "p35:workout-updated",
+              {
+                detail:
+                  parsedWorkout,
+              }
+            )
+          );
+        }
+
+        if (onWorkout) {
+          onWorkout(
+            parsedWorkout
+          ).catch(() => {});
+        }
+
+        setManualText("");
+        setDialogOpen(false);
+
+        toast.success(
+          "Workout parsed and locked in."
+        );
+      } catch (err) {
+        console.error(
+          "Manual workout parse error:",
+          err
+        );
+
+        toast.error(
+          "Failed to parse workout format."
+        );
       }
-
-      setManualText("");
-      setDialogOpen(false);
-
-      toast.success(
-        "Workout parsed and locked in."
-      );
-    } catch (err) {
-      console.error(
-        "Manual workout parse error:",
-        err
-      );
-
-      toast.error(
-        "Failed to parse workout format."
-      );
-    }
-  };
+    };
 
   // ============================================================
   // CSV IMPORT
@@ -923,7 +1081,8 @@ export function HevyCard({
           c++
         ) {
           const cc = text[c];
-          const nc = text[c + 1];
+          const nc =
+            text[c + 1];
 
           if (
             cc === '"' &&
@@ -970,7 +1129,10 @@ export function HevyCard({
           col += cc;
         }
 
-        if (col || row.length > 0) {
+        if (
+          col ||
+          row.length > 0
+        ) {
           row.push(col);
         }
 
@@ -992,7 +1154,9 @@ export function HevyCard({
 
         const headers =
           arr[0].map((h) =>
-            h.trim().toLowerCase()
+            h
+              .trim()
+              .toLowerCase()
           );
 
         const findHeader = (
@@ -1000,7 +1164,9 @@ export function HevyCard({
         ) => {
           for (const name of names) {
             const index =
-              headers.indexOf(name);
+              headers.indexOf(
+                name
+              );
 
             if (index >= 0) {
               return index;
@@ -1050,9 +1216,7 @@ export function HevyCard({
           );
 
         const iRpe =
-          findHeader(
-            "rpe"
-          );
+          findHeader("rpe");
 
         const iDistance =
           findHeader(
@@ -1157,6 +1321,7 @@ export function HevyCard({
            * This prevents two workouts on the same day with
            * the same title from accidentally becoming one session.
            */
+
           const wKey =
             `${isoStartTime}_${title}`;
 
@@ -1198,11 +1363,6 @@ export function HevyCard({
 
           // ====================================================
           // PARSE SET
-          //
-          // IMPORTANT:
-          // We no longer require BOTH weight and reps.
-          //
-          // Bodyweight/cardio/duration/RPE sets are retained.
           // ====================================================
 
           const rawWeightKg =
@@ -1300,6 +1460,7 @@ export function HevyCard({
            * Only discard the row if it contains absolutely
            * no useful workout information.
            */
+
           if (
             !hasWeightKg &&
             !hasWeightLbs &&
@@ -1308,13 +1469,6 @@ export function HevyCard({
             !hasDistance &&
             !hasDuration
           ) {
-            /*
-             * Still create a placeholder set for a genuine
-             * exercise row if the exercise itself exists.
-             *
-             * This is particularly useful for bodyweight
-             * exercises where Hevy may leave weight blank.
-             */
             exObj.sets.push({});
             continue;
           }
@@ -1374,8 +1528,8 @@ export function HevyCard({
             (workout) =>
               workout.exercises.some(
                 (exercise) =>
-                  exercise.sets.length >
-                  0
+                  exercise.sets
+                    .length > 0
               )
           );
 
@@ -1423,7 +1577,7 @@ export function HevyCard({
         );
 
         // ======================================================
-        // MAKE NEWEST WORKOUT THE ACTIVE WORKOUT
+        // MAKE NEWEST WORKOUT ACTIVE
         // ======================================================
 
         const newest =
@@ -1444,7 +1598,6 @@ export function HevyCard({
               [],
           };
 
-        // Save the active workout separately.
         localStorage.setItem(
           "p35_cached_workout",
           JSON.stringify(
@@ -1452,12 +1605,10 @@ export function HevyCard({
           )
         );
 
-        // Update this card immediately.
         setCurrentWorkout(
           latestWorkout
         );
 
-        // Tell Coach Clive immediately.
         window.dispatchEvent(
           new CustomEvent(
             "p35:workout-updated",
@@ -1468,7 +1619,6 @@ export function HevyCard({
           )
         );
 
-        // Keep parent state in sync too.
         if (onWorkout) {
           onWorkout(
             latestWorkout
@@ -1480,8 +1630,6 @@ export function HevyCard({
           });
         }
 
-        // Reset the file input so the same CSV can
-        // be selected again if needed.
         if (
           fileInputRef.current
         ) {
@@ -1512,13 +1660,18 @@ export function HevyCard({
     initialWorkout;
 
   return (
-    <section className="panel p-5 w-full overflow-hidden">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Activity className="size-5 shrink-0 text-primary" />
+    <section className="panel p-5">
+      {/* ========================================================
+          HEADER
+          Matches the API-driven card
+      ======================================================== */}
 
-          <h2 className="text-lg font-bold truncate">
-            Latest Session
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Activity className="size-5 text-primary" />
+
+          <h2 className="text-lg font-bold">
+            Latest Workout
           </h2>
         </div>
 
@@ -1533,7 +1686,6 @@ export function HevyCard({
               variant="ghost"
               size="icon"
               aria-label="Log Manual Workout"
-              className="shrink-0"
             >
               <ClipboardPaste className="size-5" />
             </Button>
@@ -1588,19 +1740,32 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
         </Dialog>
       </div>
 
+      {/* ========================================================
+          WORKOUT DISPLAY
+          This section is intentionally formatted to match
+          the API-driven HevyCard.
+      ======================================================== */}
+
       {displayWorkout ? (
         <div className="mt-4 space-y-3">
+
+          {/* Workout header */}
+
           <div className="rounded-lg border border-border bg-surface-2/60 p-3">
-            <p className="text-sm font-semibold text-primary break-words">
+            <p className="text-sm font-semibold text-primary">
               {displayWorkout.title}
             </p>
 
             <p className="text-xs text-muted-foreground">
               {displayWorkout.startTime
-                ? displayWorkout.startTime
+                ? formatDisplayWorkoutDate(
+                    displayWorkout.startTime
+                  )
                 : "Date unknown"}
             </p>
           </div>
+
+          {/* Exercises */}
 
           <div className="space-y-2">
             {displayWorkout.exercises.map(
@@ -1619,37 +1784,30 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                 return (
                   <div
                     key={i}
-                    className="rounded-lg border border-border bg-surface-2/40 p-3 space-y-1.5"
+                    className="rounded-lg border border-border bg-surface-2/40 p-3"
                   >
+
+                    {/* Exercise title + set count */}
+
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground break-words flex-1">
+                      <p className="truncate text-sm font-semibold">
                         {ex.title}
                       </p>
 
                       <span className="stat-label shrink-0">
-                        {ex.sets.length >
-                          0 &&
-                        ex.sets[0]
-                          .duration_seconds ===
-                          0
-                          ? "Notes"
-                          : `${ex.sets.length} ${
-                              ex.sets.length ===
-                              1
-                                ? "set"
-                                : "sets"
-                            }`}
+                        {ex.sets.length ===
+                        1
+                          ? "1 set"
+                          : `${ex.sets.length} sets`}
                       </span>
                     </div>
 
-                    {ex.notes && (
-                      <p className="text-xs text-muted-foreground italic leading-relaxed break-words whitespace-pre-wrap">
-                        {ex.notes}
-                      </p>
-                    )}
+                    {/* ==================================================
+                        CARDIO
+                    ================================================== */}
 
                     {isCardio ? (
-                      <div className="space-y-1 pt-1">
+                      <div className="mt-1.5 space-y-1">
                         {ex.sets.map(
                           (
                             s: any,
@@ -1671,7 +1829,12 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                         )}
                       </div>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground pt-0.5">
+
+                      /* ==================================================
+                         WEIGHT / REPS
+                      ================================================== */
+
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         {ex.sets.map(
                           (
                             s,
@@ -1707,14 +1870,32 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
                       </div>
                     )}
 
+                    {/* ==================================================
+                        FINAL SET RPE
+                    ================================================== */}
+
                     {!isCardio &&
                       lastSet?.rpe !=
                         null && (
-                        <p className="text-xs font-medium text-primary pt-0.5">
+                        <p className="mt-1.5 text-xs font-medium text-primary">
                           Final set RPE:{" "}
                           {lastSet.rpe}
                         </p>
                       )}
+
+                    {/* ==================================================
+                        NOTES
+                        Deliberately placed after sets/RPE to match
+                        the API-driven card.
+                    ================================================== */}
+
+                    {ex.notes && (
+                      <p className="mt-1.5 text-xs text-muted-foreground italic leading-relaxed">
+                        &ldquo;
+                        {ex.notes}
+                        &rdquo;
+                      </p>
+                    )}
                   </div>
                 );
               }
@@ -1722,11 +1903,21 @@ Set 3: 67.5 kg x 10 @ 9 rpe`}
           </div>
         </div>
       ) : (
+
+        /* ========================================================
+           EMPTY STATE
+        ======================================================== */
+
         <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
           No workout logged yet. Paste your latest
           session details to sync.
         </p>
       )}
+
+      {/* ========================================================
+          ACTION BUTTONS
+          Functionality remains unchanged.
+      ======================================================== */}
 
       <div className="mt-4 flex gap-2">
         <Button
